@@ -26,3 +26,4 @@ charset-normalizer==3.4.2
 idna==3.10
 gunicorn==21.2.0
 psycopg2-binary==2.9.9
+webdriver-manager==4.0.1

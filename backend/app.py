@@ -2417,10 +2417,10 @@ def api_linkedin_search_profiles():
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
 def serve_frontend(path):
-    if path != "" and os.path.exists("frontend/build/" + path):
-        return send_from_directory('frontend/build', path)
+    if path != "" and os.path.exists("frontend/dist/" + path):
+        return send_from_directory('frontend/dist', path)
     else:
-        return send_from_directory('frontend/build', 'index.html')
+        return send_from_directory('frontend/dist', 'index.html')
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5050))

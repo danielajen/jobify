@@ -1,0 +1,218 @@
+import random
+import time
+import requests
+import pandas as pd
+from jobspy import scrape_jobs
+from bs4 import BeautifulSoup
+from datetime import datetime, timedelta
+from database.models import Job, db
+from config import Config
+import re
+import json
+
+def scrape_target_jobs():
+    try:
+        print("Starting job scraping...")
+        
+        # Scrape from specified sources
+        all_jobs = []
+        all_jobs += scrape_github_internships()
+        all_jobs += scrape_glassdoor_jobs()
+        all_jobs += scrape_builtin_jobs()
+        
+        # Add traditional job boards
+        traditional_jobs = scrape_job_boards()
+        all_jobs += traditional_jobs
+        
+        # Add ID to each job
+        for job in all_jobs:
+            job['id'] = f"{job['source']}-{job['company']}-{job['title']}".replace(' ', '-')[:100]
+        
+        return all_jobs
+    except Exception as e:
+        print(f"Error scraping jobs: {e}")
+        return []
+
+def scrape_job_boards():
+    """Scrape from Indeed, LinkedIn, Glassdoor via JobSpy"""
+    try:
+        print("Scraping traditional job boards...")
+        jobs = scrape_jobs(
+            site_name=["indeed", "linkedin", "glassdoor"],
+            search_term="software engineer intern",
+            location="Canada",
+            results_wanted=50,
+            hours_old=24,
+            country_indeed='Canada'
+        )
+        
+        # Convert to list of dicts
+        jobs_list = []
+        for _, row in jobs.iterrows():
+            jobs_list.append({
+                'source': row['source'],
+                'company': row['company'],
+                'title': row['title'],
+                'url': row['job_url'],
+                'location': row['location'],
+                'description': row['description'],
+                'posted_at': datetime.now() - timedelta(days=random.randint(0, 3))
+            })
+            
+        return jobs_list
+    except Exception as e:
+        print(f"Error scraping job boards: {e}")
+        return []
+
+def scrape_github_internships():
+    try:
+        print("Scraping GitHub internships...")
+        url = "https://github.com/vanshb03/Summer2026-Internships"
+        response = requests.get(url)
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        # Find the README content
+        readme = soup.find('div', {'class': 'markdown-body'})
+        if not readme:
+            return []
+        
+        jobs = []
+        # Find all list items containing internship info
+        for item in readme.find_all('li'):
+            text = item.get_text().strip()
+            if not any(kw.lower() in text.lower() for kw in Config.KEYWORDS):
+                continue
+                
+            # Extract company and link
+            company_match = re.search(r'\[(.*?)\]', text)
+            link_match = re.search(r'\((https?://[^\)]+)\)', text)
+            
+            if company_match and link_match:
+                jobs.append({
+                    'source': 'github',
+                    'company': company_match.group(1),
+                    'title': "Software Engineer Intern",
+                    'url': link_match.group(1),
+                    'location': 'Remote',
+                    'description': text,
+                    'posted_at': datetime.now()
+                })
+                
+        return jobs
+    except Exception as e:
+        print(f"GitHub scraping error: {e}")
+        return []
+
+def scrape_glassdoor_jobs():
+    try:
+        print("Scraping Glassdoor jobs...")
+        url = "https://www.glassdoor.ca/Job/software-engineer-intern-jobs-SRCH_KO0,24.htm?sortBy=date_desc"
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+        response = requests.get(url, headers=headers)
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        jobs = []
+        listings = soup.find_all('li', {'class': 'react-job-listing'})
+        
+        for listing in listings:
+            title_elem = listing.find('a', {'class': 'jobLink'})
+            company_elem = listing.find('div', {'class': 'd-flex'}).find('span')
+            location_elem = listing.find('div', {'class': 'location'})
+            desc_elem = listing.find('div', {'class': 'job-description'})
+            
+            if not all([title_elem, company_elem, location_elem]):
+                continue
+                
+            title = title_elem.text.strip()
+            company = company_elem.text.strip()
+            location = location_elem.text.strip()
+            description = desc_elem.text.strip() if desc_elem else ""
+            job_url = f"https://www.glassdoor.com{title_elem['href']}"
+            
+            # Check if matches keywords
+            text = f"{title} {description} {location}".lower()
+            if any(kw.lower() in text for kw in Config.KEYWORDS):
+                jobs.append({
+                    'source': 'glassdoor',
+                    'company': company,
+                    'title': title,
+                    'url': job_url,
+                    'location': location,
+                    'description': description,
+                    'posted_at': datetime.now() - timedelta(days=random.randint(0, 3))
+                })
+                
+        return jobs
+    except Exception as e:
+        print(f"Glassdoor scraping error: {e}")
+        return []
+
+def scrape_builtin_jobs():
+    try:
+        print("Scraping Built In Toronto jobs...")
+        url = "https://builtintoronto.com/jobs?search=intern"
+        response = requests.get(url)
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        jobs = []
+        listings = soup.find_all('div', {'class': 'job-row'})
+        
+        for listing in listings:
+            title_elem = listing.find('h2', {'class': 'title'})
+            company_elem = listing.find('div', {'class': 'company'})
+            location_elem = listing.find('div', {'class': 'location'})
+            desc_elem = listing.find('div', {'class': 'job-description'})
+            
+            if not all([title_elem, company_elem, location_elem]):
+                continue
+                
+            title = title_elem.text.strip()
+            company = company_elem.text.strip()
+            location = location_elem.text.strip()
+            description = desc_elem.text.strip() if desc_elem else ""
+            job_url = listing.find('a')['href']
+            
+            # Check if matches keywords
+            text = f"{title} {description} {location}".lower()
+            if any(kw.lower() in text for kw in Config.KEYWORDS):
+                jobs.append({
+                    'source': 'builtin',
+                    'company': company,
+                    'title': title,
+                    'url': f"https://builtintoronto.com{job_url}",
+                    'location': location,
+                    'description': description,
+                    'posted_at': datetime.now()
+                })
+                
+        return jobs
+    except Exception as e:
+        print(f"BuiltIn scraping error: {e}")
+        return []
+
+def save_jobs_to_db(jobs):
+    session = db.session
+    try:
+        for job_data in jobs:
+            job = Job.query.get(job_data['id'])
+            if not job:
+                job = Job(id=job_data['id'])
+                session.add(job)
+            
+            job.title = job_data['title']
+            job.company = job_data['company']
+            job.location = job_data['location']
+            job.url = job_data['url']
+            job.source = job_data['source']
+            job.description = job_data.get('description', '')
+            job.posted_at = job_data['posted_at']
+        
+        session.commit()
+        print(f"Saved {len(jobs)} jobs to database")
+    except Exception as e:
+        session.rollback()
+        print(f"Error saving jobs to DB: {e}")
+    finally:
+        session.close()

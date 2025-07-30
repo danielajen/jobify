@@ -29,7 +29,7 @@ def init_db(app):
 def is_database_empty():
     """Check if database is completely empty"""
     try:
-        from database.models import UserProfile
+        from backend.database.models import UserProfile
         return UserProfile.query.first() is None
     except:
         return True
@@ -37,7 +37,7 @@ def is_database_empty():
 def seed_minimal_sample_data():
     """Seed only essential data if database is completely empty"""
     try:
-        from database.models import UserProfile, Job
+        from backend.database.models import UserProfile, Job
         
         print("🌱 Seeding minimal essential data...")
         

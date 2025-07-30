@@ -9,7 +9,7 @@ import time
 import os
 import re
 from config import config
-from database.models import db, ApplicationError, UserProfile
+from backend.database.models import db, ApplicationError, UserProfile
 from datetime import datetime
 from flask import current_app
 

@@ -160,7 +160,7 @@ def validate_production_config():
 
 # Validate on startup
 if not validate_production_config():
-    logger.warning("Production configuration incomplete - some features may not work")
+    print("Production configuration incomplete - some features may not work")
 
 # OpenAI Configuration
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', 'sk-proj-1234567890')

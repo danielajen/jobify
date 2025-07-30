@@ -52,7 +52,6 @@ yarn-error.log*
 
 # Expo
 .expo/
-# dist/
 web-build/
 
 # IDE

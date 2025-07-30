@@ -153,7 +153,7 @@ def validate_production_config():
             missing_vars.append(var)
     
     if missing_vars:
-        logger.error(f"Missing production environment variables: {missing_vars}")
+        print(f"Missing production environment variables: {missing_vars}")
         return False
     
     return True

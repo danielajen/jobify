@@ -1,13 +1,13 @@
 {
   "files": {
-    "main.css": "/static/css/main.1340e80e.css",
-    "main.js": "/static/js/main.5002d1f7.js",
-    "index.html": "/index.html",
-    "main.1340e80e.css.map": "/static/css/main.1340e80e.css.map",
-    "main.5002d1f7.js.map": "/static/js/main.5002d1f7.js.map"
+    "main.css": "/jobify/static/css/main.1340e80e.css",
+    "main.js": "/jobify/static/js/main.cc91d983.js",
+    "index.html": "/jobify/index.html",
+    "main.1340e80e.css.map": "/jobify/static/css/main.1340e80e.css.map",
+    "main.cc91d983.js.map": "/jobify/static/js/main.cc91d983.js.map"
   },
   "entrypoints": [
     "static/css/main.1340e80e.css",
-    "static/js/main.5002d1f7.js"
+    "static/js/main.cc91d983.js"
   ]
 }

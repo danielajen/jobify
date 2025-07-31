@@ -10,13 +10,12 @@ import re
 from datetime import datetime
 from urllib.parse import urljoin
 import random
-from fake_useragent import UserAgent
 import config
 from database.db import db
 from database.models import Job
 
-# Create a session with persistent cookies and proper headers
-session = requests.Session()
+# Create multiple sessions with different configurations
+sessions = []
 
 # Industry-standard user agents
 USER_AGENTS = [
@@ -24,59 +23,88 @@ USER_AGENTS = [
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/121.0',
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15',
-    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Edge/120.0.0.0',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Edge/120.0.0.0'
 ]
 
-def get_random_user_agent():
-    """Get a random user agent"""
-    return random.choice(USER_AGENTS)
-
-def setup_session():
-    """Setup session with anti-blocking headers"""
-    session.headers.update({
-        'User-Agent': get_random_user_agent(),
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.5',
-        'Accept-Encoding': 'gzip, deflate',
+# Anti-blocking headers configurations
+HEADER_CONFIGS = [
+    {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate, br',
         'Connection': 'keep-alive',
         'Upgrade-Insecure-Requests': '1',
         'Sec-Fetch-Dest': 'document',
         'Sec-Fetch-Mode': 'navigate',
         'Sec-Fetch-Site': 'none',
-        'Cache-Control': 'max-age=0'
-    })
+        'Cache-Control': 'max-age=0',
+        'DNT': '1'
+    },
+    {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+        'Accept-Encoding': 'gzip, deflate',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1'
+    },
+    {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/121.0',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+        'Accept-Encoding': 'gzip, deflate',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1'
+    }
+]
+
+def create_session():
+    """Create a new session with anti-blocking configuration"""
+    session = requests.Session()
+    config = random.choice(HEADER_CONFIGS)
+    session.headers.update(config)
+    return session
+
+def get_random_user_agent():
+    """Get a random user agent"""
+    return random.choice(USER_AGENTS)
 
 def make_lightweight_request(url, timeout=15):
-    """Make request with anti-blocking techniques"""
+    """Make request with advanced anti-blocking techniques"""
     try:
-        # Setup session with new headers
-        setup_session()
+        # Create new session for each request
+        session = create_session()
         
-        # Add random delay to avoid rate limiting
+        # Add random delay
         time.sleep(random.uniform(1, 3))
         
-        # Make request with retry logic
+        # Try multiple approaches
         for attempt in range(3):
             try:
+                # Method 1: Direct request
                 response = session.get(url, timeout=timeout, allow_redirects=True)
-                
-                # Check if we got blocked
-                if response.status_code == 403:
-                    print(f"Blocked (403) on attempt {attempt + 1}, retrying with different headers...")
-                    setup_session()  # New headers
-                    time.sleep(random.uniform(2, 5))  # Longer delay
-                    continue
                 
                 if response.status_code == 200:
                     return response
+                elif response.status_code == 403:
+                    print(f"403 blocked on attempt {attempt + 1}, trying different approach...")
+                    
+                    # Method 2: Try with different headers
+                    session = create_session()
+                    time.sleep(random.uniform(2, 4))
+                    continue
                 else:
-                    print(f"Request failed for {url}: {response.status_code} {response.reason}")
+                    print(f"Request failed: {response.status_code}")
                     return None
                     
             except requests.exceptions.RequestException as e:
                 print(f"Request error on attempt {attempt + 1}: {e}")
                 if attempt < 2:
                     time.sleep(random.uniform(2, 4))
+                    session = create_session()
                     continue
                 else:
                     return None
@@ -88,27 +116,27 @@ def make_lightweight_request(url, timeout=15):
         return None
 
 def scrape_target_jobs():
-    """Scrape jobs from sources for general swiping (Glassdoor, BuiltIn, GitHub) - MEMORY OPTIMIZED"""
-    print("Starting general job scraping for swiping (MEMORY OPTIMIZED)...")
+    """Scrape jobs from sources for general swiping (Glassdoor, BuiltIn, GitHub) - 30 JOBS LIMIT"""
+    print("Starting general job scraping for swiping (30 JOBS LIMIT)...")
     jobs = []
     
     try:
-        # 1. Scrape from GitHub internships markdown - LIMIT to 5 jobs (memory optimized)
-        print("Scraping GitHub internships (MEMORY OPTIMIZED)...")
+        # 1. Scrape from GitHub internships markdown - LIMIT to 10 jobs
+        print("Scraping GitHub internships (10 jobs limit)...")
         github_jobs = scrape_github_internships()
-        jobs.extend(github_jobs[:5])  # Limit to 5 for memory
+        jobs.extend(github_jobs[:10])  # Limit to 10
         
-        # 2. Scrape from Glassdoor - LIMIT to 5 jobs (memory optimized)
-        print("Scraping Glassdoor (MEMORY OPTIMIZED)...")
+        # 2. Scrape from Glassdoor - LIMIT to 10 jobs
+        print("Scraping Glassdoor (10 jobs limit)...")
         glassdoor_jobs = scrape_glassdoor_jobs()
-        jobs.extend(glassdoor_jobs[:5])  # Limit to 5 for memory
+        jobs.extend(glassdoor_jobs[:10])  # Limit to 10
         
-        # 3. Scrape from BuiltIn - LIMIT to 5 jobs (memory optimized)
-        print("Scraping BuiltIn (MEMORY OPTIMIZED)...")
+        # 3. Scrape from BuiltIn - LIMIT to 10 jobs
+        print("Scraping BuiltIn (10 jobs limit)...")
         builtin_jobs = scrape_builtin_jobs()
-        jobs.extend(builtin_jobs[:5])  # Limit to 5 for memory
+        jobs.extend(builtin_jobs[:10])  # Limit to 10
         
-        print(f"Total jobs scraped from sources for swiping (MEMORY OPTIMIZED): {len(jobs)}")
+        print(f"Total jobs scraped from sources for swiping (30 JOBS LIMIT): {len(jobs)}")
         return jobs
         
     except Exception as e:
@@ -155,89 +183,70 @@ def scrape_favorite_companies_jobs():
         return []
 
 def scrape_github_internships():
-    """Scrape from GitHub internships markdown with anti-blocking"""
+    """Scrape from GitHub internships markdown with advanced anti-blocking"""
     jobs = []
     try:
-        print("Scraping GitHub internships (ANTI-BLOCKING)...")
+        print("Scraping GitHub internships (ADVANCED ANTI-BLOCKING)...")
         
-        # Use GitHub API instead of direct scraping to avoid blocks
-        github_api_url = "https://api.github.com/repos/vanshb03/Summer2026-Internships/contents/README.md"
+        # Try multiple GitHub URLs to bypass blocks
+        github_urls = [
+            "https://raw.githubusercontent.com/vanshb03/Summer2026-Internships/dev/README.md",
+            "https://raw.githubusercontent.com/vanshb03/Summer2026-Internships/main/README.md",
+            "https://raw.githubusercontent.com/vanshb03/Summer2026-Internships/master/README.md"
+        ]
         
-        # Setup GitHub API headers
-        github_headers = {
-            'User-Agent': get_random_user_agent(),
-            'Accept': 'application/vnd.github.v3.raw',
-            'Authorization': 'token ghp_1234567890abcdef'  # Public repo, no token needed
-        }
-        
-        try:
-            # Try GitHub API first
-            response = session.get(github_api_url, headers=github_headers, timeout=15)
-            if response.status_code == 200:
-                content = response.text
-            else:
-                # Fallback to direct URL with anti-blocking
-                fallback_url = "https://raw.githubusercontent.com/vanshb03/Summer2026-Internships/dev/README.md"
-                response = make_lightweight_request(fallback_url)
-                if response:
+        for url in github_urls:
+            try:
+                response = make_lightweight_request(url)
+                if response and response.status_code == 200:
                     content = response.text
-                else:
-                    print("GitHub scraping failed - using fallback data")
-                    # Return some fallback internship data
-                    return [
-                        {
-                            'title': 'Software Engineering Intern',
-                            'company': 'Tech Company',
-                            'location': 'Remote',
-                            'description': 'Summer 2026 Software Engineering Internship',
-                            'url': 'https://github.com/vanshb03/Summer2026-Internships',
-                            'source': 'GitHub-Internships',
-                            'posted_at': datetime.now().isoformat()
-                        }
-                    ]
-        except Exception as e:
-            print(f"GitHub API error: {e}")
-            return []
-        
-        # Parse markdown content
-        lines = content.split('\n')
-        current_company = None
-        
-        for line in lines:
-            line = line.strip()
-            
-            # Look for company headers
-            if line.startswith('## ') and not line.startswith('### '):
-                current_company = line.replace('## ', '').strip()
-                continue
-            
-            # Look for job links
-            if line.startswith('- [') and '](' in line and ')' in line:
-                try:
-                    # Extract job title and URL
-                    title_start = line.find('- [') + 3
-                    title_end = line.find('](')
-                    url_start = title_end + 2
-                    url_end = line.find(')', url_start)
                     
-                    if title_start < title_end and url_start < url_end:
-                        title = line[title_start:title_end].strip()
-                        url = line[url_start:url_end].strip()
+                    # Parse markdown content
+                    lines = content.split('\n')
+                    current_company = None
+                    
+                    for line in lines:
+                        line = line.strip()
                         
-                        # Check if it's an internship
-                        if is_intern_position(title):
-                            jobs.append({
-                                'title': title,
-                                'company': current_company or 'Unknown',
-                                'location': 'Remote',
-                                'description': f'Internship at {current_company or "Unknown"}',
-                                'url': url,
-                                'source': 'GitHub-Internships',
-                                'posted_at': datetime.now().isoformat()
-                            })
-                except Exception as e:
-                    print(f"Error parsing GitHub line: {e}")
-                    continue
+                        # Look for company headers
+                        if line.startswith('## ') and not line.startswith('### '):
+                            current_company = line.replace('## ', '').strip()
+                            continue
+                        
+                        # Look for job links
+                        if line.startswith('- [') and '](' in line and ')' in line:
+                            try:
+                                # Extract job title and URL
+                                title_start = line.find('- [') + 3
+                                title_end = line.find('](')
+                                url_start = title_end + 2
+                                url_end = line.find(')', url_start)
+                                
+                                if title_start < title_end and url_start < url_end:
+                                    title = line[title_start:title_end].strip()
+                                    url = line[url_start:url_end].strip()
+                                    
+                                    # Check if it's an internship
+                                    if is_intern_position(title):
+                                        jobs.append({
+                                            'title': title,
+                                            'company': current_company or 'Unknown',
+                                            'location': 'Remote',
+                                            'description': f'Internship at {current_company or "Unknown"}',
+                                            'url': url,
+                                            'source': 'GitHub-Internships',
+                                            'posted_at': datetime.now().isoformat()
+                                        })
+                            except Exception as e:
+                                print(f"Error parsing GitHub line: {e}")
+                                continue
+                    
+                    if jobs:  # If we found jobs, break
+                        break
+                        
+            except Exception as e:
+                print(f"GitHub URL {url} failed: {e}")
+                continue
         
         print(f"Scraped {len(jobs)} GitHub internships")
         return jobs
@@ -247,16 +256,17 @@ def scrape_github_internships():
         return []
 
 def scrape_glassdoor_jobs():
-    """Scrape from Glassdoor with anti-blocking techniques"""
+    """Scrape from Glassdoor with advanced anti-blocking techniques"""
     jobs = []
     try:
-        print("Scraping Glassdoor (ANTI-BLOCKING)...")
+        print("Scraping Glassdoor (ADVANCED ANTI-BLOCKING)...")
         
-        # Try multiple Glassdoor URLs to avoid blocks
+        # Try multiple Glassdoor URLs with different approaches
         glassdoor_urls = [
             "https://www.glassdoor.com/Job/software-engineer-intern-jobs-SRCH_KO0,24.htm?sortBy=date_desc",
             "https://www.glassdoor.com/Job/internship-jobs-SRCH_KO0,10.htm?sortBy=date_desc",
-            "https://www.glassdoor.com/Job/software-intern-jobs-SRCH_KO0,16.htm?sortBy=date_desc"
+            "https://www.glassdoor.com/Job/software-intern-jobs-SRCH_KO0,16.htm?sortBy=date_desc",
+            "https://www.glassdoor.com/Job/engineering-intern-jobs-SRCH_KO0,18.htm?sortBy=date_desc"
         ]
         
         for url in glassdoor_urls:
@@ -265,12 +275,14 @@ def scrape_glassdoor_jobs():
                 if response and response.status_code == 200:
                     soup = BeautifulSoup(response.content, 'html.parser')
                     
-                    # Look for job cards with different selectors
+                    # Look for job cards with multiple selectors
                     job_selectors = [
                         'div[data-test="job-card"]',
                         '.job-search-card',
                         '.job-card',
-                        '[data-test="job-listing"]'
+                        '[data-test="job-listing"]',
+                        '.job-listing',
+                        '.job-item'
                     ]
                     
                     job_cards = []
@@ -280,17 +292,18 @@ def scrape_glassdoor_jobs():
                             break
                     
                     if not job_cards:
-                        # Try alternative approach
+                        # Try alternative approach with regex
                         job_cards = soup.find_all('div', class_=re.compile(r'job|card|listing', re.I))
                     
                     for card in job_cards[:10]:  # Limit to 10 jobs
                         try:
-                            # Extract job title
+                            # Extract job title with multiple approaches
                             title_elem = (
                                 card.find('h3', class_=re.compile(r'title', re.I)) or
                                 card.find('h2', class_=re.compile(r'title', re.I)) or
                                 card.find('a', class_=re.compile(r'title', re.I)) or
-                                card.find('span', class_=re.compile(r'title', re.I))
+                                card.find('span', class_=re.compile(r'title', re.I)) or
+                                card.find('div', class_=re.compile(r'title', re.I))
                             )
                             
                             if title_elem and is_intern_position(title_elem.text.strip()):
@@ -299,7 +312,8 @@ def scrape_glassdoor_jobs():
                                 # Extract company name
                                 company_elem = (
                                     card.find('h4', class_=re.compile(r'company|subtitle', re.I)) or
-                                    card.find('span', class_=re.compile(r'company', re.I))
+                                    card.find('span', class_=re.compile(r'company', re.I)) or
+                                    card.find('div', class_=re.compile(r'company', re.I))
                                 )
                                 company = company_elem.text.strip() if company_elem else 'Unknown'
                                 
@@ -335,21 +349,6 @@ def scrape_glassdoor_jobs():
                 print(f"Glassdoor URL {url} failed: {e}")
                 continue
         
-        # If no jobs found, return fallback data
-        if not jobs:
-            print("Glassdoor blocked - using fallback data")
-            return [
-                {
-                    'title': 'Software Engineering Intern',
-                    'company': 'Tech Company',
-                    'location': 'Remote',
-                    'description': 'Summer 2026 Software Engineering Internship',
-                    'url': 'https://www.glassdoor.com',
-                    'source': 'Glassdoor',
-                    'posted_at': datetime.now().isoformat()
-                }
-            ]
-        
         print(f"Scraped {len(jobs)} Glassdoor jobs")
         return jobs
         
@@ -358,16 +357,17 @@ def scrape_glassdoor_jobs():
         return []
 
 def scrape_builtin_jobs():
-    """Scrape from BuiltIn with anti-blocking techniques"""
+    """Scrape from BuiltIn with advanced anti-blocking techniques"""
     jobs = []
     try:
-        print("Scraping BuiltIn (ANTI-BLOCKING)...")
+        print("Scraping BuiltIn (ADVANCED ANTI-BLOCKING)...")
         
         # Try multiple BuiltIn URLs
         builtin_urls = [
             "https://builtintoronto.com/jobs?search=intern&sort=newest",
             "https://builtintoronto.com/jobs?search=software+intern&sort=newest",
-            "https://builtintoronto.com/jobs?search=engineering+intern&sort=newest"
+            "https://builtintoronto.com/jobs?search=engineering+intern&sort=newest",
+            "https://builtintoronto.com/jobs?search=developer+intern&sort=newest"
         ]
         
         for url in builtin_urls:
@@ -376,12 +376,13 @@ def scrape_builtin_jobs():
                 if response and response.status_code == 200:
                     soup = BeautifulSoup(response.content, 'html.parser')
                     
-                    # Look for job cards with different selectors
+                    # Look for job cards with multiple selectors
                     job_selectors = [
                         '.job-card',
                         '.job-listing',
                         '[data-test="job-card"]',
-                        '.job-item'
+                        '.job-item',
+                        '.job-post'
                     ]
                     
                     job_cards = []
@@ -391,16 +392,18 @@ def scrape_builtin_jobs():
                             break
                     
                     if not job_cards:
-                        # Try alternative approach
+                        # Try alternative approach with regex
                         job_cards = soup.find_all('div', class_=re.compile(r'job|card|listing', re.I))
                     
                     for card in job_cards[:10]:  # Limit to 10 jobs
                         try:
-                            # Extract job title
+                            # Extract job title with multiple approaches
                             title_elem = (
                                 card.find('h3', class_=re.compile(r'title', re.I)) or
                                 card.find('h2', class_=re.compile(r'title', re.I)) or
-                                card.find('a', class_=re.compile(r'title', re.I))
+                                card.find('a', class_=re.compile(r'title', re.I)) or
+                                card.find('span', class_=re.compile(r'title', re.I)) or
+                                card.find('div', class_=re.compile(r'title', re.I))
                             )
                             
                             if title_elem and is_intern_position(title_elem.text.strip()):
@@ -409,7 +412,8 @@ def scrape_builtin_jobs():
                                 # Extract company name
                                 company_elem = (
                                     card.find('div', class_=re.compile(r'company', re.I)) or
-                                    card.find('span', class_=re.compile(r'company', re.I))
+                                    card.find('span', class_=re.compile(r'company', re.I)) or
+                                    card.find('h4', class_=re.compile(r'company', re.I))
                                 )
                                 company = company_elem.text.strip() if company_elem else 'Unknown'
                                 
@@ -444,21 +448,6 @@ def scrape_builtin_jobs():
             except Exception as e:
                 print(f"BuiltIn URL {url} failed: {e}")
                 continue
-        
-        # If no jobs found, return fallback data
-        if not jobs:
-            print("BuiltIn blocked - using fallback data")
-            return [
-                {
-                    'title': 'Software Engineering Intern',
-                    'company': 'Toronto Tech Company',
-                    'location': 'Toronto, ON',
-                    'description': 'Summer 2026 Software Engineering Internship',
-                    'url': 'https://builtintoronto.com',
-                    'source': 'BuiltIn',
-                    'posted_at': datetime.now().isoformat()
-                }
-            ]
         
         print(f"Scraped {len(jobs)} BuiltIn jobs")
         return jobs

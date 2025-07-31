@@ -438,7 +438,7 @@ def get_jobs():
                 'description': job.description,
                 'url': job.url,
                 'source': job.source,
-                'posted_date': job.posted_at.isoformat() if job.posted_at else None
+                'posted_at': job.posted_at.isoformat() if job.posted_at else None
             })
         
         # 2. If no swiping jobs in database, run swiping scraping immediately
@@ -464,7 +464,7 @@ def get_jobs():
                         'description': job.description,
                         'url': job.url,
                         'source': job.source,
-                        'posted_date': job.posted_at.isoformat() if job.posted_at else None
+                        'posted_at': job.posted_at.isoformat() if job.posted_at else None
                     })
                 logger.info(f"Swiping scraping complete - {len(job_list)} jobs loaded")
                 
@@ -2619,7 +2619,7 @@ def get_cached_jobs():
                 'description': job.description,
                 'url': job.url,
                 'source': job.source,
-                'posted_date': job.posted_at.isoformat() if job.posted_at else None
+                'posted_at': job.posted_at.isoformat() if job.posted_at else None
             })
         
         logger.info(f"Returning {len(job_list)} cached swiping jobs")

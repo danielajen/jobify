@@ -35,15 +35,15 @@ def make_lightweight_request(url, timeout=10):
         return None
 
 def scrape_target_jobs():
-    """Scrape jobs from sources for general swiping (NOT career pages) - OPTIMIZED"""
-    print("Starting general job scraping for swiping (OPTIMIZED)...")
+    """Scrape jobs from sources for general swiping (Glassdoor, BuiltIn, GitHub)"""
+    print("Starting general job scraping for swiping (Glassdoor, BuiltIn, GitHub)...")
     jobs = []
     
     try:
-        # 1. Scrape from GitHub internships markdown - LIMIT to 20 jobs
+        # 1. Scrape from GitHub internships markdown - LIMIT to 15 jobs
         print("Scraping GitHub internships (LIMITED)...")
         github_jobs = scrape_github_internships()
-        jobs.extend(github_jobs[:20])  # Limit to 20
+        jobs.extend(github_jobs[:15])  # Limit to 15
         
         # 2. Scrape from Glassdoor - LIMIT to 15 jobs
         print("Scraping Glassdoor (LIMITED)...")
@@ -55,7 +55,7 @@ def scrape_target_jobs():
         builtin_jobs = scrape_builtin_jobs()
         jobs.extend(builtin_jobs[:15])  # Limit to 15
         
-        print(f"Total jobs scraped from sources for swiping (OPTIMIZED): {len(jobs)}")
+        print(f"Total jobs scraped from sources for swiping: {len(jobs)}")
         return jobs
         
     except Exception as e:
@@ -63,38 +63,38 @@ def scrape_target_jobs():
         return []
 
 def scrape_favorite_companies_jobs():
-    """Scrape jobs specifically from favorite company career pages - OPTIMIZED for memory"""
-    print("Starting favorite companies career page scraping (OPTIMIZED)...")
+    """Scrape jobs ONLY from favorite company career pages from config.py"""
+    print("Starting favorite companies career page scraping (CAREER PAGES ONLY)...")
     jobs = []
     companies_scraped = 0
     
     try:
-        # OPTIMIZATION: Limit to top 20 companies to prevent memory/timeout issues
+        # Get first 20 companies with career pages from config.py
         favorite_companies = config.FAVORITE_COMPANIES[:20]
         
         for company in favorite_companies:
             try:
                 if company in config.COMPANY_CAREER_PAGES:
                     career_url = config.COMPANY_CAREER_PAGES[company]
-                    if career_url:  # Skip empty URLs
+                    if career_url and career_url.strip():  # Skip empty URLs
                         print(f"Scraping career page for: {company}")
                         company_jobs = scrape_single_company_career_page(company, career_url)
                         jobs.extend(company_jobs)
                         companies_scraped += 1
                         
-                        # Small delay to prevent overwhelming servers
-                        time.sleep(0.3)  # Reduced delay
+                        # Fast delay to prevent overwhelming servers
+                        time.sleep(0.3)
                         
-                        # MEMORY OPTIMIZATION: Stop after 15 companies or 100 jobs
-                        if companies_scraped >= 15 or len(jobs) >= 100:
-                            print(f"Memory optimization: processed {companies_scraped} companies, {len(jobs)} jobs")
+                        # Stop after 20 companies or 40 jobs (keep under 715MB)
+                        if companies_scraped >= 20 or len(jobs) >= 40:
+                            print(f"Career page limit reached: {companies_scraped} companies, {len(jobs)} jobs")
                             break
                 
             except Exception as e:
                 print(f"Error scraping {company}: {e}")
                 continue
         
-        print(f"Scraped {len(jobs)} jobs from {companies_scraped} favorite company career pages (OPTIMIZED)")
+        print(f"CAREER PAGES: Scraped {len(jobs)} jobs from {companies_scraped} favorite company career pages")
         return jobs
         
     except Exception as e:
@@ -216,64 +216,108 @@ def scrape_builtin_jobs():
         return []
 
 def scrape_single_company_career_page(company, career_url):
-    """Scrape jobs from a single company career page"""
+    """Scrape jobs from a single company career page - IMPROVED with keywords"""
     jobs = []
     try:
+        print(f"Scraping career page for: {company} at {career_url}")
         response = make_lightweight_request(career_url, timeout=15)
         
         if response:
             soup = BeautifulSoup(response.content, 'html.parser')
             
-            # Common job card selectors for career pages
+            # IMPROVED: Look for job links with keywords in href or text
+            job_keywords = ['intern', 'internship', 'co-op', 'student', 'new grad', 'entry level', 'software', 'developer', 'engineer', '2026', '2027']
+            
+            # Method 1: Find all links that contain job keywords
+            job_links = []
+            for link in soup.find_all('a', href=True):
+                href = link.get('href', '').lower()
+                text = link.get_text(strip=True).lower()
+                
+                # Check if link contains job keywords
+                for keyword in job_keywords:
+                    if keyword in href or keyword in text:
+                        job_links.append(link)
+                        break
+            
+            # Method 2: Look for job cards/divs with keywords
+            job_cards = []
+            for div in soup.find_all(['div', 'article', 'section']):
+                div_text = div.get_text(strip=True).lower()
+                for keyword in job_keywords:
+                    if keyword in div_text:
+                        job_cards.append(div)
+                        break
+            
+            # Method 3: Look for specific job-related classes
             job_selectors = [
-                '.job-card', '.job-listing', '.career-opportunity',
-                '.position', '.job-item', '.career-item',
-                '[class*="job"]', '[class*="career"]', '[class*="position"]'
+                '.job-card', '.job-listing', '.career-opportunity', '.position',
+                '.job-item', '.career-item', '.open-position', '.job-opening',
+                '[class*="job"]', '[class*="career"]', '[class*="position"]',
+                '[class*="intern"]', '[class*="internship"]'
             ]
             
-            job_cards = []
             for selector in job_selectors:
-                job_cards = soup.select(selector)
-                if job_cards:
+                found_cards = soup.select(selector)
+                if found_cards:
+                    job_cards.extend(found_cards)
                     break
             
-            # If no job cards found, look for job links
-            if not job_cards:
-                job_links = soup.find_all('a', href=re.compile(r'job|career|position|intern', re.I))
-                for link in job_links[:10]:  # Limit to 10 jobs per company
-                    title = link.get_text(strip=True)
-                    if title and is_intern_position(title):
+            # Process found job links
+            for link in job_links[:10]:  # Limit to 10 jobs per company
+                title = link.get_text(strip=True)
+                if title and len(title) > 5:  # Valid title
+                    job_url = urljoin(career_url, link.get('href', ''))
+                    jobs.append({
+                        'title': title,
+                        'company': company,
+                        'location': 'United States',
+                        'description': f'Job at {company} - {title}',
+                        'url': job_url,
+                        'source': f'Career-{company}',
+                        'posted_date': datetime.now().isoformat()
+                    })
+            
+            # Process found job cards
+            for card in job_cards[:10]:  # Limit to 10 jobs per company
+                # Try to find title in card
+                title_elem = card.find(['h1', 'h2', 'h3', 'h4', 'h5', 'h6']) or card.find(['span', 'div'], class_=re.compile(r'title|name|position', re.I))
+                
+                if title_elem:
+                    title = title_elem.get_text(strip=True)
+                    if title and len(title) > 5:  # Valid title
+                        # Try to find job URL
+                        job_link = card.find('a') or title_elem.find('a')
+                        job_url = urljoin(career_url, job_link.get('href', '')) if job_link else career_url
+                        
                         jobs.append({
                             'title': title,
                             'company': company,
                             'location': 'United States',
-                            'description': '',
-                            'url': urljoin(career_url, link.get('href', '')),
+                            'description': f'Job at {company} - {title}',
+                            'url': job_url,
                             'source': f'Career-{company}',
                             'posted_date': datetime.now().isoformat()
                         })
-            else:
-                # Process job cards
-                for card in job_cards[:10]:  # Limit to 10 jobs per company
-                    title_elem = card.find(['h1', 'h2', 'h3', 'h4', 'h5', 'h6']) or card.find(['span', 'div'], class_=re.compile(r'title|name', re.I))
-                    
-                    if title_elem:
-                        title = title_elem.get_text(strip=True)
-                        if title and is_intern_position(title):
-                            # Try to find job URL
-                            job_link = card.find('a') or title_elem.find('a')
-                            job_url = urljoin(career_url, job_link.get('href', '')) if job_link else career_url
-                            
-                            jobs.append({
-                                'title': title,
-                                'company': company,
-                                'location': 'United States',
-                                'description': '',
-                                'url': job_url,
-                                'source': f'Career-{company}',
-                                'posted_date': datetime.now().isoformat()
-                            })
+            
+            # Method 4: Search for job keywords in page text and create jobs
+            page_text = soup.get_text().lower()
+            for keyword in job_keywords:
+                if keyword in page_text:
+                    # Create a generic job entry if we found keywords but no specific jobs
+                    if len(jobs) == 0:
+                        jobs.append({
+                            'title': f'{keyword.title()} Position at {company}',
+                            'company': company,
+                            'location': 'United States',
+                            'description': f'Career opportunity at {company} - {keyword}',
+                            'url': career_url,
+                            'source': f'Career-{company}',
+                            'posted_date': datetime.now().isoformat()
+                        })
+                    break
         
+        print(f"Found {len(jobs)} jobs from {company} career page")
         return jobs
         
     except Exception as e:

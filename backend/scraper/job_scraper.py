@@ -72,14 +72,14 @@ def get_random_user_agent():
     """Get a random user agent"""
     return random.choice(USER_AGENTS)
 
-def make_lightweight_request(url, timeout=5):
-    """Make request with immediate bypass - NO RETRIES"""
+def make_lightweight_request(url, timeout=3):
+    """Make request with immediate bypass - NO RETRIES - FAST"""
     try:
         # Create new session for each request
         session = create_session()
         
-        # Add minimal delay
-        time.sleep(random.uniform(0.1, 0.3))
+        # Minimal delay for speed
+        time.sleep(random.uniform(0.05, 0.1))  # Reduced from 0.1-0.3 to 0.05-0.1
         
         # Single attempt with immediate bypass
         try:
@@ -108,31 +108,31 @@ def make_lightweight_request(url, timeout=5):
             return None
         
     except Exception as e:
-        print(f"Error in make_lightweight_request: {e}")
+        print(f"An unexpected error occurred in make_lightweight_request: {e}")
         return None
 
 def scrape_target_jobs():
-    """Scrape jobs from sources for general swiping (Glassdoor, BuiltIn, GitHub) - 30 JOBS LIMIT"""
-    print("Starting general job scraping for swiping (30 JOBS LIMIT)...")
+    """Scrape jobs from sources for general swiping (Glassdoor, BuiltIn, GitHub) - FAST 15 JOBS LIMIT"""
+    print("Starting FAST general job scraping for swiping (15 JOBS LIMIT)...")
     jobs = []
     
     try:
-        # 1. Scrape from GitHub internships markdown - LIMIT to 10 jobs
-        print("Scraping GitHub internships (10 jobs limit)...")
+        # 1. Scrape from GitHub internships markdown - LIMIT to 5 jobs for speed
+        print("Scraping GitHub internships (5 jobs limit for speed)...")
         github_jobs = scrape_github_internships()
-        jobs.extend(github_jobs[:10])  # Limit to 10
+        jobs.extend(github_jobs[:5])  # Limit to 5 for speed
         
-        # 2. Scrape from Glassdoor - LIMIT to 10 jobs
-        print("Scraping Glassdoor (10 jobs limit)...")
+        # 2. Scrape from Glassdoor - LIMIT to 5 jobs for speed
+        print("Scraping Glassdoor (5 jobs limit for speed)...")
         glassdoor_jobs = scrape_glassdoor_jobs()
-        jobs.extend(glassdoor_jobs[:10])  # Limit to 10
+        jobs.extend(glassdoor_jobs[:5])  # Limit to 5 for speed
         
-        # 3. Scrape from BuiltIn - LIMIT to 10 jobs
-        print("Scraping BuiltIn (10 jobs limit)...")
+        # 3. Scrape from BuiltIn - LIMIT to 5 jobs for speed
+        print("Scraping BuiltIn (5 jobs limit for speed)...")
         builtin_jobs = scrape_builtin_jobs()
-        jobs.extend(builtin_jobs[:10])  # Limit to 10
+        jobs.extend(builtin_jobs[:5])  # Limit to 5 for speed
         
-        print(f"Total jobs scraped from sources for swiping (30 JOBS LIMIT): {len(jobs)}")
+        print(f"Total jobs scraped from sources for swiping (FAST 15 JOBS LIMIT): {len(jobs)}")
         return jobs
         
     except Exception as e:

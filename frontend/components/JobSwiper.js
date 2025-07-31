@@ -28,14 +28,14 @@ const JobSwiper = ({ onSaveJob, onApplyJob }) => {
   }, []);
 
   const fetchJobs = async () => {
-    setLoading(true);
-    setError(null);
-
     try {
+      setLoading(true);
+      setError(null);
+
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
 
-      const response = await fetch(`${API_URL}/api/jobs`, {
+      const response = await fetch(`${API_URL}/jobs`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -46,37 +46,29 @@ const JobSwiper = ({ onSaveJob, onApplyJob }) => {
 
       clearTimeout(timeoutId);
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
+      if (response.ok) {
+        const data = await response.json();
+        console.log('API Response data:', typeof data, data);
 
-      const contentType = response.headers.get('content-type');
-      if (!contentType || !contentType.includes('application/json')) {
-        throw new Error('Response is not JSON');
-      }
-
-      const data = await response.json();
-      console.log('API Response data:', typeof data, data);
-
-      if (Array.isArray(data)) {
-        setJobs(data);
-        console.log(`Loaded ${data.length} jobs (hybrid mode - cached + background refresh)`);
+        if (Array.isArray(data)) {
+          // Limit to 5 jobs for fast loading
+          const limitedJobs = data.slice(0, 5);
+          setJobs(limitedJobs);
+          console.log(`Loaded ${limitedJobs.length} jobs (hybrid mode - cached + background refresh, limited to 5 for speed)`);
+        } else {
+          console.error('Invalid data format received:', data);
+          throw new Error('Invalid data format - expected array');
+        }
       } else {
-        console.error('Invalid data format received:', data);
-        throw new Error('Invalid data format - expected array');
+        console.error('Jobs response not ok:', response.status);
+        throw new Error(`Server error: ${response.status}`);
       }
-
     } catch (error) {
-      if (error.name === 'AbortError') {
-        console.log('Request timeout - trying cached jobs only...');
-        // Fallback to cached jobs only
-        await fetchCachedJobsOnly();
-      } else {
-        console.error('Error fetching jobs:', error);
-        setError('Failed to load jobs. Please try again.');
-        // Fallback to cached jobs only
-        await fetchCachedJobsOnly();
-      }
+      console.error('Error fetching jobs:', error);
+      setError('Error fetching jobs. Trying cached jobs...');
+
+      // Fallback to cached jobs only
+      await fetchCachedJobsOnly();
     } finally {
       setLoading(false);
     }
@@ -87,7 +79,7 @@ const JobSwiper = ({ onSaveJob, onApplyJob }) => {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
 
-      const response = await fetch(`${API_URL}/api/jobs/cached`, {
+      const response = await fetch(`${API_URL}/jobs/cached`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -102,12 +94,17 @@ const JobSwiper = ({ onSaveJob, onApplyJob }) => {
         const data = await response.json();
         console.log('Cached API Response data:', typeof data, data);
         if (Array.isArray(data)) {
-          setJobs(data);
-          console.log(`Loaded ${data.length} cached jobs only`);
+          // Limit to 5 jobs for fast loading
+          const limitedJobs = data.slice(0, 5);
+          setJobs(limitedJobs);
+          console.log(`Loaded ${limitedJobs.length} cached jobs (limited to 5 for speed)`);
         } else {
           console.error('Invalid cached data format received:', data);
           setError('Invalid data format from server');
         }
+      } else {
+        console.error('Cached jobs response not ok:', response.status);
+        setError('Server error loading cached jobs');
       }
     } catch (error) {
       console.error('Error fetching cached jobs:', error);

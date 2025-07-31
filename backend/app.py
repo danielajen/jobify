@@ -75,7 +75,7 @@ def health_check():
         db_status = f'error: {str(e)}'
     
     try:
-        # Check Redis connection
+        # Check Redis connection with timeout
         if REDIS_AVAILABLE and redis_client:
             redis_client.ping()
             redis_status = 'connected'
@@ -114,88 +114,67 @@ AWS_REGION = os.getenv('AWS_REGION', 'us-east-1')
 # For now, keep local storage as fallback
 LOCAL_STORAGE_ENABLED = not CLOUD_STORAGE_ENABLED
 
-# Celery configuration - Use Heroku Redis URL if available, fallback to local
+# Celery configuration - Production Redis with proper error handling
 REDIS_URL = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
 app.config['CELERY_BROKER_URL'] = REDIS_URL
 app.config['CELERY_RESULT_BACKEND'] = REDIS_URL
 
-# Initialize Celery with proper configuration
+# Initialize Celery with production configuration
 celery = Celery(
     app.name,
     broker=app.config['CELERY_BROKER_URL'],
     backend=app.config['CELERY_RESULT_BACKEND'],
     include=['app']
 )
-celery.conf.update(app.config)
 
-# Configure Celery for Heroku
+# Production Celery configuration for FAANG-level performance
 celery.conf.update(
     broker_connection_retry_on_startup=True,
+    broker_connection_retry=True,
+    broker_connection_max_retries=10,
     task_serializer='json',
     accept_content=['json'],
     result_serializer='json',
     timezone='UTC',
     enable_utc=True,
+    task_acks_late=True,
+    worker_prefetch_multiplier=1,
+    task_compression='gzip',
+    result_compression='gzip',
+    task_ignore_result=False,
+    worker_max_tasks_per_child=1000,
+    worker_max_memory_per_child=200000,  # 200MB
+    task_time_limit=300,  # 5 minutes
+    task_soft_time_limit=240,  # 4 minutes
+    worker_disable_rate_limits=False,
+    worker_send_task_events=True,
+    task_send_sent_event=True,
+    event_queue_expires=60,
+    worker_state_db='worker_state.db',
+    result_expires=3600,  # 1 hour
+    result_backend_transport_options={
+        'master_name': "mymaster",
+        'visibility_timeout': 3600,
+        'retry_on_timeout': True,
+        'max_connections': 20
+    }
 )
 
-# LinkedIn OpenID Connect Configuration - Standard Tier
-LINKEDIN_CLIENT_ID = os.environ.get('LINKEDIN_CLIENT_ID', '78410ucd7xak42')
-LINKEDIN_CLIENT_SECRET = os.environ.get('LINKEDIN_CLIENT_SECRET', 'WPL_AP1.UXNA3HdvDRzqx702.2tvvkg==')
-
-# Use Heroku URL in production, local URL in development
-if os.environ.get('DATABASE_URL'):  # Heroku environment
-    LINKEDIN_REDIRECT_URI = os.environ.get('LINKEDIN_REDIRECT_URI', 'https://your-app-name.herokuapp.com/linkedin/callback')
-else:  # Local development
-    LINKEDIN_REDIRECT_URI = os.environ.get('LINKEDIN_REDIRECT_URI', 'http://192.168.2.18:5050/linkedin/callback')
-
-# Member (3-legged) scopes for real connections and search
-LINKEDIN_SCOPE = 'openid profile email r_liteprofile r_emailaddress r_organization_social w_member_social'
-
-# Production LinkedIn OpenID Connect - verified app
-LINKEDIN_PRODUCTION_MODE = True
-
-# Production validation
-def validate_production_config():
-    """Validate production configuration"""
-    required_vars = [
-        'LINKEDIN_CLIENT_ID',
-        'LINKEDIN_CLIENT_SECRET', 
-        'OPENAI_API_KEY',
-        'SENDGRID_API_KEY'
-    ]
-    
-    missing_vars = []
-    for var in required_vars:
-        if not os.getenv(var) and not globals().get(var):
-            missing_vars.append(var)
-    
-    if missing_vars:
-        print(f"Missing production environment variables: {missing_vars}")
-        return False
-    
-    return True
-
-# Validate on startup
-if not validate_production_config():
-    print("Production configuration incomplete - some features may not work")
-
-# OpenAI Configuration
-OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', 'sk-proj-1234567890')
-# Note: We'll initialize the client when needed instead of setting global api_key
-
-# SendGrid Configuration
-SENDGRID_API_KEY = os.getenv('SENDGRID_API_KEY', 'SG.iTcMDdD3S6CxL8IBwI-kzg.q8qGISP4Bj9eSeNVTkGz5uliUvaKBM8Y2TmxQEn2QhoS')
-SENDGRID_FROM_EMAIL = os.getenv('SENDGRID_FROM_EMAIL', 'danielajeni.11@gmail.com')
-
-# Flask Secret Key
-app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'jobswipe-super-secret-key-2024-xyz123')
-
-# Redis Configuration - Use Heroku Redis URL if available
+# Redis Configuration with production settings
 try:
-    redis_client = redis.from_url(REDIS_URL)
-    # Test connection
+    redis_client = redis.from_url(
+        REDIS_URL,
+        decode_responses=True,
+        socket_connect_timeout=5,
+        socket_timeout=5,
+        retry_on_timeout=True,
+        health_check_interval=30,
+        max_connections=20
+    )
+    # Test connection with timeout
     redis_client.ping()
     REDIS_AVAILABLE = True
+    logger.info("Redis connected successfully")
 except Exception as e:
     logger.warning(f"Redis not available: {e}")
     REDIS_AVAILABLE = False
@@ -2491,6 +2470,57 @@ def serve_frontend(path):
                 '/health'
             ]
         })
+
+# LinkedIn OpenID Connect Configuration - Standard Tier
+LINKEDIN_CLIENT_ID = os.environ.get('LINKEDIN_CLIENT_ID', '78410ucd7xak42')
+LINKEDIN_CLIENT_SECRET = os.environ.get('LINKEDIN_CLIENT_SECRET', 'WPL_AP1.UXNA3HdvDRzqx702.2tvvkg==')
+
+# Use Heroku URL in production, local URL in development
+if os.environ.get('DATABASE_URL'):  # Heroku environment
+    LINKEDIN_REDIRECT_URI = os.environ.get('LINKEDIN_REDIRECT_URI', 'https://jobswipe-app-e625703f9b1e.herokuapp.com/linkedin/callback')
+else:  # Local development
+    LINKEDIN_REDIRECT_URI = os.environ.get('LINKEDIN_REDIRECT_URI', 'http://192.168.2.18:5050/linkedin/callback')
+
+# Member (3-legged) scopes for real connections and search
+LINKEDIN_SCOPE = 'openid profile email r_liteprofile r_emailaddress r_organization_social w_member_social'
+
+# Production LinkedIn OpenID Connect - verified app
+LINKEDIN_PRODUCTION_MODE = True
+
+# Production validation
+def validate_production_config():
+    """Validate production configuration"""
+    required_vars = [
+        'LINKEDIN_CLIENT_ID',
+        'LINKEDIN_CLIENT_SECRET', 
+        'OPENAI_API_KEY',
+        'SENDGRID_API_KEY'
+    ]
+    
+    missing_vars = []
+    for var in required_vars:
+        if not os.getenv(var) and not globals().get(var):
+            missing_vars.append(var)
+    
+    if missing_vars:
+        print(f"Missing production environment variables: {missing_vars}")
+        return False
+    
+    return True
+
+# Validate on startup
+if not validate_production_config():
+    print("Production configuration incomplete - some features may not work")
+
+# OpenAI Configuration
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', 'sk-proj-1234567890')
+
+# SendGrid Configuration
+SENDGRID_API_KEY = os.getenv('SENDGRID_API_KEY', 'SG.iTcMDdD3S6CxL8IBwI-kzg.q8qGISP4Bj9eSeNVTkGz5uliUvaKBM8Y2TmxQEn2QhoS')
+SENDGRID_FROM_EMAIL = os.getenv('SENDGRID_FROM_EMAIL', 'danielajeni.11@gmail.com')
+
+# Flask Secret Key
+app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'jobswipe-super-secret-key-2024-xyz123')
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5050))

@@ -2522,7 +2522,78 @@ def api_linkedin_search_profiles():
         logger.error(f"LinkedIn profile search error: {str(e)}")
         return jsonify({'error': f'Search failed: {str(e)}'}), 500
 
-# Serve frontend in production
+# Add new endpoint for cached jobs
+@app.route('/api/jobs/cached', methods=['GET'])
+def get_cached_jobs():
+    """Get swiping jobs from cache/database immediately without triggering scraping"""
+    try:
+        # Get only swiping jobs from database (exclude career page jobs)
+        jobs = Job.query.filter(
+            Job.source.in_(['Glassdoor', 'BuiltIn', 'GitHub-Internships'])
+        ).order_by(Job.posted_at.desc()).limit(100).all()
+        
+        job_list = []
+        for job in jobs:
+            job_list.append({
+                'id': job.id,
+                'title': job.title,
+                'company': job.company,
+                'location': job.location,
+                'description': job.description,
+                'url': job.url,
+                'source': job.source,
+                'posted_at': job.posted_at.isoformat() if job.posted_at else None
+            })
+        
+        logger.info(f"Returning {len(job_list)} cached swiping jobs")
+        return jsonify(job_list)
+        
+    except Exception as e:
+        logger.error(f"Error getting cached swiping jobs: {str(e)}")
+        return jsonify([])
+
+@celery.task(name='app.refresh_swiping_jobs_background')
+def refresh_swiping_jobs_background():
+    """Background task to refresh swiping jobs only (Glassdoor, BuiltIn, GitHub)"""
+    with app.app_context():
+        try:
+            logger.info("Starting background swiping job refresh...")
+            
+            # Only scrape from sources for general swiping (GitHub, Glassdoor, BuiltIn)
+            logger.info("Background: Scraping from job sources for swiping...")
+            from scraper.job_scraper import scrape_target_jobs
+            jobs = scrape_target_jobs()
+            saved_count = save_jobs_to_db(jobs)
+                
+            logger.info(f"Background swiping refresh complete: {len(jobs)} swipe jobs, {saved_count} saved")
+            
+        except Exception as e:
+            logger.error(f"Background swiping job refresh error: {str(e)}")
+
+@celery.task(name='app.refresh_jobs_background')
+def refresh_jobs_background():
+    """Background task to refresh jobs without blocking the frontend"""
+    with app.app_context():
+        try:
+            logger.info("Starting background job refresh...")
+            
+            # 1. Quick scrape from sources (GitHub, Glassdoor, BuiltIn) - limit to 30 jobs
+            logger.info("Background: Scraping from job sources...")
+            jobs = scrape_target_jobs()
+            saved_count = save_jobs_to_db(jobs)
+            
+            # 2. Scrape from favorite company career pages - limit to 20 companies
+            logger.info("Background: Scraping from favorite company career pages...")
+            from scraper.job_scraper import scrape_favorite_companies_jobs
+            career_jobs = scrape_favorite_companies_jobs()
+            career_saved_count = save_jobs_to_db(career_jobs)
+                
+            logger.info(f"Background refresh complete: {len(jobs)} swipe jobs, {len(career_jobs)} career jobs, {saved_count + career_saved_count} total saved")
+            
+        except Exception as e:
+            logger.error(f"Background job refresh error: {str(e)}")
+
+# Serve frontend in production - MOVED TO END TO NOT INTERFERE WITH API ROUTES
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
 def serve_frontend(path):
@@ -2598,77 +2669,6 @@ SENDGRID_FROM_EMAIL = os.getenv('SENDGRID_FROM_EMAIL', 'danielajeni.11@gmail.com
 
 # Flask Secret Key
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'jobswipe-super-secret-key-2024-xyz123')
-
-# Add new endpoint for cached jobs
-@app.route('/api/jobs/cached', methods=['GET'])
-def get_cached_jobs():
-    """Get swiping jobs from cache/database immediately without triggering scraping"""
-    try:
-        # Get only swiping jobs from database (exclude career page jobs)
-        jobs = Job.query.filter(
-            Job.source.in_(['Glassdoor', 'BuiltIn', 'GitHub-Internships'])
-        ).order_by(Job.posted_at.desc()).limit(100).all()
-        
-        job_list = []
-        for job in jobs:
-            job_list.append({
-                'id': job.id,
-                'title': job.title,
-                'company': job.company,
-                'location': job.location,
-                'description': job.description,
-                'url': job.url,
-                'source': job.source,
-                'posted_at': job.posted_at.isoformat() if job.posted_at else None
-            })
-        
-        logger.info(f"Returning {len(job_list)} cached swiping jobs")
-        return jsonify(job_list)
-        
-    except Exception as e:
-        logger.error(f"Error getting cached swiping jobs: {str(e)}")
-        return jsonify([])
-
-@celery.task(name='app.refresh_swiping_jobs_background')
-def refresh_swiping_jobs_background():
-    """Background task to refresh swiping jobs only (Glassdoor, BuiltIn, GitHub)"""
-    with app.app_context():
-        try:
-            logger.info("Starting background swiping job refresh...")
-            
-            # Only scrape from sources for general swiping (GitHub, Glassdoor, BuiltIn)
-            logger.info("Background: Scraping from job sources for swiping...")
-            from scraper.job_scraper import scrape_target_jobs
-            jobs = scrape_target_jobs()
-            saved_count = save_jobs_to_db(jobs)
-                
-            logger.info(f"Background swiping refresh complete: {len(jobs)} swipe jobs, {saved_count} saved")
-            
-        except Exception as e:
-            logger.error(f"Background swiping job refresh error: {str(e)}")
-
-@celery.task(name='app.refresh_jobs_background')
-def refresh_jobs_background():
-    """Background task to refresh jobs without blocking the frontend"""
-    with app.app_context():
-        try:
-            logger.info("Starting background job refresh...")
-            
-            # 1. Quick scrape from sources (GitHub, Glassdoor, BuiltIn) - limit to 30 jobs
-            logger.info("Background: Scraping from job sources...")
-            jobs = scrape_target_jobs()
-            saved_count = save_jobs_to_db(jobs)
-            
-            # 2. Scrape from favorite company career pages - limit to 20 companies
-            logger.info("Background: Scraping from favorite company career pages...")
-            from scraper.job_scraper import scrape_favorite_companies_jobs
-            career_jobs = scrape_favorite_companies_jobs()
-            career_saved_count = save_jobs_to_db(career_jobs)
-                
-            logger.info(f"Background refresh complete: {len(jobs)} swipe jobs, {len(career_jobs)} career jobs, {saved_count + career_saved_count} total saved")
-            
-        except Exception as e:
-            logger.error(f"Background job refresh error: {str(e)}")
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5050))

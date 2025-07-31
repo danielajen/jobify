@@ -15,7 +15,7 @@ fake-useragent==2.2.0
 lxml==5.2.1
 pandas==2.3.0
 numpy==1.26.3
-jobspy==0.29.0
+# jobspy==0.29.0  # REMOVED - Using lightweight HTTP requests instead
 tls-client==1.0.1
 markdownify==0.13.1
 html5lib==1.1

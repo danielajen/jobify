@@ -419,7 +419,7 @@ def get_linked_companies_jobs():
         logger.error(f"Linked companies error: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/jobs', methods=['GET'])
+@app.route('/jobs', methods=['GET'])
 def get_jobs():
     """Get swiping jobs only (Glassdoor, BuiltIn, GitHub) - NOT career pages"""
     try:
@@ -502,7 +502,7 @@ def get_favorite_jobs():
         logger.error(f"Fav jobs error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
-@app.route('/api/apply', methods=['POST', 'OPTIONS'])
+@app.route('/apply', methods=['POST', 'OPTIONS'])
 def handle_apply():
     if request.method == 'OPTIONS':
         return '', 200
@@ -559,7 +559,7 @@ def handle_apply():
         logger.error(f"Apply error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
-@app.route('/api/swipe', methods=['POST', 'OPTIONS'])
+@app.route('/swipe', methods=['POST', 'OPTIONS'])
 def handle_swipe():
     if request.method == 'OPTIONS':
         return '', 200
@@ -603,7 +603,7 @@ def handle_swipe():
         logger.error(f"Swipe error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
-@app.route('/api/favorite-company', methods=['POST', 'OPTIONS'])
+@app.route('/favorite-company', methods=['POST', 'OPTIONS'])
 def favorite_company():
     if request.method == 'OPTIONS':
         return '', 200
@@ -630,7 +630,7 @@ def favorite_company():
         logger.error(f"Fav company error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
-@app.route('/api/favorites', methods=['GET', 'OPTIONS'])
+@app.route('/favorites', methods=['GET', 'OPTIONS'])
 def get_favorites():
     if request.method == 'OPTIONS':
         return '', 200
@@ -643,7 +643,7 @@ def get_favorites():
     companies = [fav.name for fav in favs]
     return jsonify(companies)
 
-@app.route('/api/profile', methods=['GET', 'POST', 'OPTIONS'])
+@app.route('/profile', methods=['GET', 'POST', 'OPTIONS'])
 def user_profile():
     if request.method == 'OPTIONS':
         return '', 200
@@ -719,7 +719,7 @@ def debug_upload():
     return jsonify({'files': files, 'form': form})
 
 # Fix resume upload endpoint to add more logging and clearer errors
-@app.route('/api/upload-resume', methods=['POST', 'OPTIONS'])
+@app.route('/upload-resume', methods=['POST', 'OPTIONS'])
 def upload_resume():
     if request.method == 'OPTIONS':
         return '', 200
@@ -788,7 +788,7 @@ def upload_resume():
     logger.error('Resume upload: Invalid file type')
     return jsonify({'error': 'Invalid file type'}), 400
 
-@app.route('/api/application-errors', methods=['GET', 'OPTIONS'])
+@app.route('/application-errors', methods=['GET', 'OPTIONS'])
 def get_application_errors():
     if request.method == 'OPTIONS':
         return '', 200
@@ -1628,7 +1628,7 @@ def get_outreach_history():
         return jsonify({'error': f'Failed to fetch history: {str(e)}'}), 500
 
 # Add missing API endpoints for frontend compatibility
-@app.route('/api/resources', methods=['GET'])
+@app.route('/resources', methods=['GET'])
 def get_resources():
     """Get job search resources"""
     resources = {
@@ -1793,7 +1793,7 @@ def api_send_outreach():
         logger.error(f"Send outreach error: {str(e)}")
         return jsonify({'error': f'Email sending failed: {str(e)}'}), 500
 
-@app.route('/api/linkedin/connections')
+@app.route('/linkedin/connections')
 def api_linkedin_connections():
     """Fetch user's LinkedIn connections - OpenID Connect API"""
     try:
@@ -1910,7 +1910,7 @@ def api_linkedin_connections():
         logger.error(f"LinkedIn connections error: {str(e)}")
         return jsonify({'error': f'Failed to fetch connections: {str(e)}'}), 500
 
-@app.route('/api/auth/status', methods=['GET'])
+@app.route('/auth/status', methods=['GET'])
 def check_auth_status():
     """Check if user is signed in via LinkedIn - PRODUCTION STATUS"""
     try:
@@ -2523,7 +2523,7 @@ def api_linkedin_search_profiles():
         return jsonify({'error': f'Search failed: {str(e)}'}), 500
 
 # Add new endpoint for cached jobs
-@app.route('/api/jobs/cached', methods=['GET'])
+@app.route('/jobs/cached', methods=['GET'])
 def get_cached_jobs():
     """Get swiping jobs from cache/database immediately without triggering scraping"""
     try:

@@ -10,7 +10,7 @@ import re
 from datetime import datetime
 from urllib.parse import urljoin
 import random
-import config
+from config import config
 from database.db import db
 from database.models import Job
 
@@ -72,31 +72,51 @@ def get_random_user_agent():
     """Get a random user agent"""
     return random.choice(USER_AGENTS)
 
-def make_lightweight_request(url, timeout=8):
-    """Make request with real anti-blocking techniques"""
+def make_lightweight_request(url, timeout=10):
+    """Make request with REAL anti-blocking techniques"""
     try:
         # Create new session for each request
         session = create_session()
         
         # Add minimal delay
-        time.sleep(random.uniform(0.5, 1))
+        time.sleep(random.uniform(0.2, 0.5))
         
-        # Single attempt with real anti-blocking
-        try:
-            response = session.get(url, timeout=timeout, allow_redirects=True)
-            
-            if response.status_code == 200:
-                return response
-            elif response.status_code == 403:
-                print(f"403 blocked - trying alternative URL immediately")
-                return None  # Don't retry, try alternative URL instead
-            else:
-                print(f"Request failed: {response.status_code}")
-                return None
+        # Real anti-blocking with multiple attempts
+        for attempt in range(3):
+            try:
+                # Add referer header to look more legitimate
+                headers = session.headers.copy()
+                headers.update({
+                    'Referer': 'https://www.google.com/',
+                    'Sec-Fetch-Site': 'cross-site',
+                    'Sec-Fetch-Mode': 'navigate',
+                    'Sec-Fetch-User': '?1'
+                })
                 
-        except requests.exceptions.RequestException as e:
-            print(f"Request error: {e}")
-            return None
+                response = session.get(url, timeout=timeout, headers=headers, allow_redirects=True)
+                
+                if response.status_code == 200:
+                    return response
+                elif response.status_code == 403:
+                    print(f"403 blocked on attempt {attempt + 1}, trying different approach...")
+                    # Try with different user agent
+                    session = create_session()
+                    time.sleep(random.uniform(1, 2))
+                    continue
+                else:
+                    print(f"Request failed: {response.status_code}")
+                    return None
+                    
+            except requests.exceptions.RequestException as e:
+                print(f"Request error on attempt {attempt + 1}: {e}")
+                if attempt < 2:
+                    time.sleep(random.uniform(1, 2))
+                    session = create_session()
+                    continue
+                else:
+                    return None
+        
+        return None
         
     except Exception as e:
         print(f"Error in make_lightweight_request: {e}")
@@ -243,10 +263,10 @@ def scrape_github_internships():
         return []
 
 def scrape_glassdoor_jobs():
-    """Scrape from Glassdoor with advanced anti-blocking techniques"""
+    """Scrape from Glassdoor with REAL anti-blocking techniques"""
     jobs = []
     try:
-        print("Scraping Glassdoor (ADVANCED ANTI-BLOCKING)...")
+        print("Scraping Glassdoor (REAL ANTI-BLOCKING)...")
         
         # Try multiple Glassdoor URLs with different approaches
         glassdoor_urls = [
@@ -269,18 +289,22 @@ def scrape_glassdoor_jobs():
                         '.job-card',
                         '[data-test="job-listing"]',
                         '.job-listing',
-                        '.job-item'
+                        '.job-item',
+                        '[class*="job"]',
+                        '[class*="card"]'
                     ]
                     
                     job_cards = []
                     for selector in job_selectors:
                         job_cards = soup.select(selector)
                         if job_cards:
+                            print(f"Found {len(job_cards)} job cards with selector: {selector}")
                             break
                     
                     if not job_cards:
                         # Try alternative approach with regex
                         job_cards = soup.find_all('div', class_=re.compile(r'job|card|listing', re.I))
+                        print(f"Found {len(job_cards)} job cards with regex")
                     
                     for card in job_cards[:10]:  # Limit to 10 jobs
                         try:
@@ -290,7 +314,10 @@ def scrape_glassdoor_jobs():
                                 card.find('h2', class_=re.compile(r'title', re.I)) or
                                 card.find('a', class_=re.compile(r'title', re.I)) or
                                 card.find('span', class_=re.compile(r'title', re.I)) or
-                                card.find('div', class_=re.compile(r'title', re.I))
+                                card.find('div', class_=re.compile(r'title', re.I)) or
+                                card.find('h3') or
+                                card.find('h2') or
+                                card.find('a')
                             )
                             
                             if title_elem and is_intern_position(title_elem.text.strip()):
@@ -300,14 +327,17 @@ def scrape_glassdoor_jobs():
                                 company_elem = (
                                     card.find('h4', class_=re.compile(r'company|subtitle', re.I)) or
                                     card.find('span', class_=re.compile(r'company', re.I)) or
-                                    card.find('div', class_=re.compile(r'company', re.I))
+                                    card.find('div', class_=re.compile(r'company', re.I)) or
+                                    card.find('h4') or
+                                    card.find('span')
                                 )
                                 company = company_elem.text.strip() if company_elem else 'Unknown'
                                 
                                 # Extract location
                                 location_elem = (
                                     card.find('span', class_=re.compile(r'location', re.I)) or
-                                    card.find('div', class_=re.compile(r'location', re.I))
+                                    card.find('div', class_=re.compile(r'location', re.I)) or
+                                    card.find('span')
                                 )
                                 location = location_elem.text.strip() if location_elem else 'Remote'
                                 
@@ -324,6 +354,7 @@ def scrape_glassdoor_jobs():
                                     'source': 'Glassdoor',
                                     'posted_at': datetime.now().isoformat()
                                 })
+                                print(f"Found job: {title} at {company}")
                                 
                         except Exception as e:
                             print(f"Error parsing Glassdoor card: {e}")
@@ -344,10 +375,10 @@ def scrape_glassdoor_jobs():
         return []
 
 def scrape_builtin_jobs():
-    """Scrape from BuiltIn with advanced anti-blocking techniques"""
+    """Scrape from BuiltIn with REAL anti-blocking techniques"""
     jobs = []
     try:
-        print("Scraping BuiltIn (ADVANCED ANTI-BLOCKING)...")
+        print("Scraping BuiltIn (REAL ANTI-BLOCKING)...")
         
         # Try multiple BuiltIn URLs
         builtin_urls = [
@@ -369,18 +400,22 @@ def scrape_builtin_jobs():
                         '.job-listing',
                         '[data-test="job-card"]',
                         '.job-item',
-                        '.job-post'
+                        '.job-post',
+                        '[class*="job"]',
+                        '[class*="card"]'
                     ]
                     
                     job_cards = []
                     for selector in job_selectors:
                         job_cards = soup.select(selector)
                         if job_cards:
+                            print(f"Found {len(job_cards)} job cards with selector: {selector}")
                             break
                     
                     if not job_cards:
                         # Try alternative approach with regex
                         job_cards = soup.find_all('div', class_=re.compile(r'job|card|listing', re.I))
+                        print(f"Found {len(job_cards)} job cards with regex")
                     
                     for card in job_cards[:10]:  # Limit to 10 jobs
                         try:
@@ -390,7 +425,10 @@ def scrape_builtin_jobs():
                                 card.find('h2', class_=re.compile(r'title', re.I)) or
                                 card.find('a', class_=re.compile(r'title', re.I)) or
                                 card.find('span', class_=re.compile(r'title', re.I)) or
-                                card.find('div', class_=re.compile(r'title', re.I))
+                                card.find('div', class_=re.compile(r'title', re.I)) or
+                                card.find('h3') or
+                                card.find('h2') or
+                                card.find('a')
                             )
                             
                             if title_elem and is_intern_position(title_elem.text.strip()):
@@ -400,14 +438,17 @@ def scrape_builtin_jobs():
                                 company_elem = (
                                     card.find('div', class_=re.compile(r'company', re.I)) or
                                     card.find('span', class_=re.compile(r'company', re.I)) or
-                                    card.find('h4', class_=re.compile(r'company', re.I))
+                                    card.find('h4', class_=re.compile(r'company', re.I)) or
+                                    card.find('h4') or
+                                    card.find('span')
                                 )
                                 company = company_elem.text.strip() if company_elem else 'Unknown'
                                 
                                 # Extract location
                                 location_elem = (
                                     card.find('div', class_=re.compile(r'location', re.I)) or
-                                    card.find('span', class_=re.compile(r'location', re.I))
+                                    card.find('span', class_=re.compile(r'location', re.I)) or
+                                    card.find('span')
                                 )
                                 location = location_elem.text.strip() if location_elem else 'Toronto'
                                 
@@ -424,6 +465,7 @@ def scrape_builtin_jobs():
                                     'source': 'BuiltIn',
                                     'posted_at': datetime.now().isoformat()
                                 })
+                                print(f"Found job: {title} at {company}")
                                 
                         except Exception as e:
                             print(f"Error parsing BuiltIn card: {e}")

@@ -402,7 +402,7 @@ def get_linked_companies_jobs():
         logger.error(f"Linked companies error: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/jobs', methods=['GET', 'OPTIONS'])
+@app.route('/api/jobs', methods=['GET'])
 def get_jobs():
     """Get jobs with background refresh"""
     try:
@@ -422,8 +422,34 @@ def get_jobs():
                 'posted_date': job.posted_date.isoformat() if job.posted_date else None
             })
         
-        # 2. Trigger background job refresh if Redis is available
-        if REDIS_AVAILABLE:
+        # 2. If no jobs in database, run initial scraping immediately
+        if len(job_list) == 0:
+            logger.info("No jobs in database - running initial scraping...")
+            try:
+                # Run scraping directly since Redis is not available
+                initial_job_scraping()
+                
+                # Get jobs again after scraping
+                jobs = Job.query.filter_by(is_active=True).order_by(Job.posted_date.desc()).limit(100).all()
+                job_list = []
+                for job in jobs:
+                    job_list.append({
+                        'id': job.id,
+                        'title': job.title,
+                        'company': job.company,
+                        'location': job.location,
+                        'description': job.description,
+                        'url': job.url,
+                        'source': job.source,
+                        'posted_date': job.posted_date.isoformat() if job.posted_date else None
+                    })
+                logger.info(f"Initial scraping complete - {len(job_list)} jobs loaded")
+                
+            except Exception as e:
+                logger.error(f"Initial scraping failed: {str(e)}")
+        
+        # 3. Trigger background job refresh if Redis is available
+        elif REDIS_AVAILABLE:
             try:
                 # Queue background job refresh
                 celery.send_task('app.refresh_jobs_background')

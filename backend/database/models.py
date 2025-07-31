@@ -2,7 +2,7 @@ from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 
 # Import the shared db instance
-from backend.database.db import db
+from database.db import db
 
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)

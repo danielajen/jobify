@@ -2,10 +2,10 @@ from __future__ import absolute_import
 from flask import Flask, jsonify, request, send_from_directory, session, redirect, url_for
 from flask_cors import CORS
 from apscheduler.schedulers.background import BackgroundScheduler
-from backend.database.db import db, init_db
-from backend.database.models import Job, Swipe, FavoriteCompany, Recruiter, UserProfile, Resume, ApplicationError, User, LinkedInConnection, OutreachHistory
-from backend.scraper.job_scraper import scrape_target_jobs, save_jobs_to_db, scrape_company_jobs
-from backend.config import Config
+from database.db import db, init_db
+from database.models import Job, Swipe, FavoriteCompany, Recruiter, UserProfile, Resume, ApplicationError, User, LinkedInConnection, OutreachHistory
+from scraper.job_scraper import scrape_target_jobs, save_jobs_to_db, scrape_company_jobs
+from config import Config
 import os
 import json
 from datetime import datetime, timedelta
@@ -24,8 +24,8 @@ import sqlite3
 import time
 import threading
 import random
-from backend.scraper.auto_applier import AutoApplier
-from backend.scraper.linkedin_scraper import LinkedInScraper
+from scraper.auto_applier import AutoApplier
+from scraper.linkedin_scraper import LinkedInScraper
 import openai
 import redis
 from sendgrid import SendGridAPIClient

@@ -12,7 +12,7 @@ from bs4 import BeautifulSoup
 from datetime import datetime
 import re
 from config import config  # Now correctly imported
-from backend.database.models import db, Job
+from database.models import db, Job
 from urllib.parse import urljoin
 import time
 import random

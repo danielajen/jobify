@@ -10,7 +10,7 @@ python-dotenv==1.1.0
 Werkzeug==3.0.1
 APScheduler==3.10.4
 beautifulsoup4==4.13.4
-selenium==4.33.0
+# selenium==4.33.0  # REMOVED - Using lightweight jobspy instead
 fake-useragent==2.2.0
 lxml==5.2.1
 pandas==2.3.0
@@ -26,4 +26,4 @@ charset-normalizer==3.4.2
 idna==3.10
 gunicorn==21.2.0
 psycopg2-binary==2.9.9
-webdriver-manager==4.0.1
+# webdriver-manager==4.0.1  # REMOVED - No longer using Selenium

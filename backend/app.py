@@ -374,6 +374,23 @@ def get_linked_companies_jobs():
     try:
         cutoff_date = datetime.utcnow() - timedelta(days=7)
         results = []
+        
+        # Check if we have any career page jobs
+        career_jobs_exist = Job.query.filter(
+            Job.source.like('Career-%')
+        ).first() is not None
+        
+        # If no career page jobs exist, trigger career page scraping
+        if not career_jobs_exist:
+            logger.info("No career page jobs found - triggering career page scraping...")
+            try:
+                from scraper.job_scraper import scrape_favorite_companies_jobs
+                career_jobs = scrape_favorite_companies_jobs()
+                save_jobs_to_db(career_jobs)
+                logger.info(f"Career page scraping complete - {len(career_jobs)} jobs saved")
+            except Exception as e:
+                logger.error(f"Career page scraping failed: {str(e)}")
+        
         for company in Config.FAVORITE_COMPANIES:
             company_jobs = Job.query.filter(
                 Job.company.ilike(f'%{company}%'),

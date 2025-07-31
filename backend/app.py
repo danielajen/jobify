@@ -404,10 +404,12 @@ def get_linked_companies_jobs():
 
 @app.route('/api/jobs', methods=['GET'])
 def get_jobs():
-    """Get jobs with background refresh"""
+    """Get swiping jobs only (Glassdoor, BuiltIn, GitHub) - NOT career pages"""
     try:
-        # 1. Return cached jobs immediately
-        jobs = Job.query.order_by(Job.posted_at.desc()).limit(100).all()
+        # 1. Return only swiping jobs (exclude career page jobs)
+        jobs = Job.query.filter(
+            Job.source.in_(['Glassdoor', 'BuiltIn', 'GitHub-Internships'])
+        ).order_by(Job.posted_at.desc()).limit(100).all()
         
         job_list = []
         for job in jobs:
@@ -422,15 +424,19 @@ def get_jobs():
                 'posted_date': job.posted_at.isoformat() if job.posted_at else None
             })
         
-        # 2. If no jobs in database, run initial scraping immediately
+        # 2. If no swiping jobs in database, run swiping scraping immediately
         if len(job_list) == 0:
-            logger.info("No jobs in database - running initial scraping...")
+            logger.info("No swiping jobs in database - running swiping scraping...")
             try:
-                # Run scraping directly since Redis is not available
-                initial_job_scraping()
+                # Run only swiping scraping (NOT career pages)
+                from scraper.job_scraper import scrape_target_jobs
+                swipe_jobs = scrape_target_jobs()
+                save_jobs_to_db(swipe_jobs)
                 
-                # Get jobs again after scraping
-                jobs = Job.query.order_by(Job.posted_at.desc()).limit(100).all()
+                # Get swiping jobs again after scraping
+                jobs = Job.query.filter(
+                    Job.source.in_(['Glassdoor', 'BuiltIn', 'GitHub-Internships'])
+                ).order_by(Job.posted_at.desc()).limit(100).all()
                 job_list = []
                 for job in jobs:
                     job_list.append({
@@ -443,25 +449,25 @@ def get_jobs():
                         'source': job.source,
                         'posted_date': job.posted_at.isoformat() if job.posted_at else None
                     })
-                logger.info(f"Initial scraping complete - {len(job_list)} jobs loaded")
+                logger.info(f"Swiping scraping complete - {len(job_list)} jobs loaded")
                 
             except Exception as e:
-                logger.error(f"Initial scraping failed: {str(e)}")
+                logger.error(f"Swiping scraping failed: {str(e)}")
         
-        # 3. Trigger background job refresh if Redis is available
+        # 3. Trigger background swiping job refresh if Redis is available
         elif REDIS_AVAILABLE:
             try:
-                # Queue background job refresh
-                celery.send_task('app.refresh_jobs_background')
-                logger.info("Queued background job refresh")
+                # Queue background swiping job refresh only
+                celery.send_task('app.refresh_swiping_jobs_background')
+                logger.info("Queued background swiping job refresh")
             except Exception as e:
-                logger.error(f"Failed to queue background refresh: {str(e)}")
+                logger.error(f"Failed to queue background swiping refresh: {str(e)}")
         
-        logger.info(f"Returning {len(job_list)} jobs with background refresh")
+        logger.info(f"Returning {len(job_list)} swiping jobs")
         return jsonify(job_list)
         
     except Exception as e:
-        logger.error(f"Error getting jobs: {str(e)}")
+        logger.error(f"Error getting swiping jobs: {str(e)}")
         return jsonify([])
 
 @app.route('/api/fav-jobs', methods=['GET', 'OPTIONS'])
@@ -2579,10 +2585,12 @@ app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'jobswipe-super-secret-key-20
 # Add new endpoint for cached jobs
 @app.route('/api/jobs/cached', methods=['GET'])
 def get_cached_jobs():
-    """Get jobs from cache/database immediately without triggering scraping"""
+    """Get swiping jobs from cache/database immediately without triggering scraping"""
     try:
-        # Get jobs from database (cached results)
-        jobs = Job.query.order_by(Job.posted_at.desc()).limit(100).all()
+        # Get only swiping jobs from database (exclude career page jobs)
+        jobs = Job.query.filter(
+            Job.source.in_(['Glassdoor', 'BuiltIn', 'GitHub-Internships'])
+        ).order_by(Job.posted_at.desc()).limit(100).all()
         
         job_list = []
         for job in jobs:
@@ -2597,14 +2605,31 @@ def get_cached_jobs():
                 'posted_date': job.posted_at.isoformat() if job.posted_at else None
             })
         
-        logger.info(f"Returning {len(job_list)} cached jobs")
+        logger.info(f"Returning {len(job_list)} cached swiping jobs")
         return jsonify(job_list)
         
     except Exception as e:
-        logger.error(f"Error getting cached jobs: {str(e)}")
+        logger.error(f"Error getting cached swiping jobs: {str(e)}")
         return jsonify([])
 
-# Add Celery task for background job refresh
+@celery.task(name='app.refresh_swiping_jobs_background')
+def refresh_swiping_jobs_background():
+    """Background task to refresh swiping jobs only (Glassdoor, BuiltIn, GitHub)"""
+    with app.app_context():
+        try:
+            logger.info("Starting background swiping job refresh...")
+            
+            # Only scrape from sources for general swiping (GitHub, Glassdoor, BuiltIn)
+            logger.info("Background: Scraping from job sources for swiping...")
+            from scraper.job_scraper import scrape_target_jobs
+            jobs = scrape_target_jobs()
+            saved_count = save_jobs_to_db(jobs)
+                
+            logger.info(f"Background swiping refresh complete: {len(jobs)} swipe jobs, {saved_count} saved")
+            
+        except Exception as e:
+            logger.error(f"Background swiping job refresh error: {str(e)}")
+
 @celery.task(name='app.refresh_jobs_background')
 def refresh_jobs_background():
     """Background task to refresh jobs without blocking the frontend"""

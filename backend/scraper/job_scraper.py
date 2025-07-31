@@ -140,59 +140,38 @@ def scrape_target_jobs():
         return []
 
 def scrape_favorite_companies_jobs():
-    """Smart career page scraping - ALL companies with strict memory limits under 715MB"""
-    print("Starting SMART career page scraping (ALL COMPANIES, STRICT MEMORY LIMITS, UNDER 715MB)...")
+    """Fast career page scraping - 20 companies at a time with quick updates"""
+    print("Starting FAST career page scraping (20 companies, quick updates)...")
     jobs = []
     companies_scraped = 0
     
     try:
-        # Get ALL companies but process smartly
-        all_companies = config.FAVORITE_COMPANIES
-        print(f"Processing ALL {len(all_companies)} companies with strict memory limits...")
+        # Get only first 20 companies for speed
+        companies_to_scrape = config.FAVORITE_COMPANIES[:20]
+        print(f"Scraping {len(companies_to_scrape)} companies quickly...")
         
-        # Smart processing: only scrape companies that don't have recent jobs
-        for company in all_companies:
+        for company in companies_to_scrape:
             try:
-                # Check if company already has recent jobs (last 7 days)
-                recent_jobs = Job.query.filter(
-                    Job.company.ilike(f'%{company}%'),
-                    Job.created_at >= datetime.utcnow() - timedelta(days=7)
-                ).count()
-                
-                # Only scrape if company has less than 2 recent jobs (reduced from 3)
-                if recent_jobs < 2:
-                    if company in config.COMPANY_CAREER_PAGES:
-                        career_url = config.COMPANY_CAREER_PAGES[company]
-                        if career_url and career_url.strip():
-                            print(f"Smart scrape: {company} (only {recent_jobs} recent jobs)")
-                            company_jobs = scrape_single_company_career_page(company, career_url)
-                            jobs.extend(company_jobs[:1])  # Only 1 job per company (reduced from 2)
-                            companies_scraped += 1
-                            
-                            # Very fast delay
-                            time.sleep(0.05)  # 50ms delay (reduced from 100ms)
-                            
-                            # Memory check: if we have too many jobs, save and continue
-                            if len(jobs) >= 20:  # Reduced from 30
-                                print(f"Memory threshold: {len(jobs)} jobs, saving batch...")
-                                save_jobs_to_db(jobs)
-                                jobs = []  # Clear memory
-                else:
-                    print(f"Skipping {company} (has {recent_jobs} recent jobs)")
+                if company in config.COMPANY_CAREER_PAGES:
+                    career_url = config.COMPANY_CAREER_PAGES[company]
+                    if career_url and career_url.strip():
+                        print(f"Quick scrape: {company}")
+                        company_jobs = scrape_single_company_career_page(company, career_url)
+                        jobs.extend(company_jobs[:1])  # Only 1 job per company for speed
+                        companies_scraped += 1
+                        
+                        # Very fast delay
+                        time.sleep(0.05)  # 50ms delay
                 
             except Exception as e:
                 print(f"Error scraping {company}: {e}")
                 continue
         
-        # Save any remaining jobs
-        if jobs:
-            save_jobs_to_db(jobs)
-        
-        print(f"SMART CAREER PAGES: {companies_scraped} companies updated (ALL COMPANIES, UNDER 715MB)")
-        return []
+        print(f"FAST CAREER PAGES: {len(jobs)} jobs from {companies_scraped} companies")
+        return jobs
         
     except Exception as e:
-        print(f"Error in smart career page scraping: {e}")
+        print(f"Error in fast career page scraping: {e}")
         return []
 
 def scrape_github_internships():
@@ -607,58 +586,65 @@ def is_intern_position(title):
     return any(keyword in title_lower for keyword in intern_keywords)
 
 def save_jobs_to_db(jobs):
-    """Save jobs to database with title length limits and memory management"""
+    """Save jobs to database with memory optimization"""
     if not jobs:
         return
     
     try:
+        # Process jobs in batches to reduce memory usage
+        batch_size = 10
         saved_count = 0
-        for job_data in jobs:
-            try:
-                # Truncate title to 200 characters to fit database
-                title = job_data.get('title', '')[:200] if job_data.get('title') else 'Unknown Position'
-                
-                # Truncate other fields to prevent memory issues
-                company = job_data.get('company', '')[:100] if job_data.get('company') else 'Unknown Company'
-                location = job_data.get('location', '')[:500] if job_data.get('location') else 'Remote'
-                description = job_data.get('description', '')[:1000] if job_data.get('description') else ''
-                url = job_data.get('url', '')[:500] if job_data.get('url') else ''
-                source = job_data.get('source', '')[:50] if job_data.get('source') else 'Unknown'
-                
-                # Check if job already exists
-                existing_job = Job.query.filter_by(
-                    title=title,
-                    company=company,
-                    url=url
-                ).first()
-                
-                if not existing_job:
-                    new_job = Job(
-                        title=title,
-                        company=company,
-                        location=location,
-                        description=description,
-                        url=url,
-                        posted_at=job_data.get('posted_at'),
-                        source=source
-                    )
-                    db.session.add(new_job)
-                    saved_count += 1
-                    
-                    # Commit every 10 jobs to prevent memory buildup
-                    if saved_count % 10 == 0:
-                        db.session.commit()
-                        
-            except Exception as e:
-                print(f"Error saving job {title}: {e}")
-                continue
         
-        # Final commit
-        if saved_count > 0:
+        for i in range(0, len(jobs), batch_size):
+            batch = jobs[i:i + batch_size]
+            
+            for job_data in batch:
+                try:
+                    # Check if job already exists
+                    existing_job = Job.query.filter_by(
+                        title=job_data['title'],
+                        company=job_data['company'],
+                        url=job_data['url']
+                    ).first()
+                    
+                    if not existing_job:
+                        # Convert posted_at string to datetime object
+                        posted_at = None
+                        if job_data.get('posted_at'):
+                            try:
+                                if isinstance(job_data['posted_at'], str):
+                                    posted_at = datetime.fromisoformat(job_data['posted_at'].replace('Z', '+00:00'))
+                                else:
+                                    posted_at = job_data['posted_at']
+                            except:
+                                posted_at = datetime.now()
+                        
+                        job = Job(
+                            title=job_data['title'],
+                            company=job_data['company'],
+                            location=job_data['location'],
+                            description=job_data['description'],
+                            url=job_data['url'],
+                            source=job_data['source'],
+                            posted_at=posted_at
+                        )
+                        db.session.add(job)
+                        saved_count += 1
+                        
+                except Exception as e:
+                    print(f"Error saving job {job_data.get('title', 'Unknown')}: {e}")
+                    continue
+            
+            # Commit batch to reduce memory usage
             db.session.commit()
+            
+            # Small delay to prevent overwhelming the database
+            time.sleep(0.1)
         
         print(f"Total jobs saved: {saved_count}")
+        return saved_count
         
     except Exception as e:
         print(f"Error in save_jobs_to_db: {e}")
         db.session.rollback()
+        return 0

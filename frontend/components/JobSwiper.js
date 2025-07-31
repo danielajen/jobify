@@ -17,15 +17,46 @@ const { width, height } = Dimensions.get('window');
 
 const JobSwiper = ({ onSaveJob, onApplyJob }) => {
   const [jobs, setJobs] = useState([]);
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [currentIndex, setCurrentIndex] = useState(0);
   const [showJobModal, setShowJobModal] = useState(false);
   const [selectedJob, setSelectedJob] = useState(null);
+  const [jobOffset, setJobOffset] = useState(0); // Track offset for continuous loading
 
   useEffect(() => {
     fetchJobs();
   }, []);
+
+  // Load more jobs when user is close to running out
+  useEffect(() => {
+    if (currentIndex >= jobs.length - 2 && jobs.length > 0) {
+      loadMoreJobs();
+    }
+  }, [currentIndex, jobs.length]);
+
+  const loadMoreJobs = async () => {
+    try {
+      const response = await fetch(`https://jobswipe-app-e625703f9b1e.herokuapp.com/jobs/load-more?offset=${jobOffset}&limit=10`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        const newJobs = await response.json();
+        if (Array.isArray(newJobs) && newJobs.length > 0) {
+          setJobs(prevJobs => [...prevJobs, ...newJobs]);
+          setJobOffset(prevOffset => prevOffset + newJobs.length);
+          console.log(`Loaded ${newJobs.length} more jobs (total: ${jobs.length + newJobs.length})`);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading more jobs:', error);
+    }
+  };
 
   const fetchJobs = async () => {
     try {

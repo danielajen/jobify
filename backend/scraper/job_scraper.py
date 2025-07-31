@@ -140,42 +140,60 @@ def scrape_target_jobs():
         return []
 
 def scrape_favorite_companies_jobs():
-    """Scrape jobs ONLY from favorite company career pages from config.py - MEMORY OPTIMIZED"""
-    print("Starting favorite companies career page scraping (MEMORY OPTIMIZED)...")
+    """Scrape jobs from ALL favorite company career pages with smart memory management"""
+    print("Starting COMPREHENSIVE career page scraping (ALL COMPANIES, MEMORY OPTIMIZED)...")
     jobs = []
     companies_scraped = 0
     
     try:
-        # Get first 10 companies with career pages from config.py (memory optimized)
-        favorite_companies = config.FAVORITE_COMPANIES[:10]  # Reduced from 20 to 10
+        # Get ALL companies but process in batches to manage memory
+        all_favorite_companies = config.FAVORITE_COMPANIES
+        print(f"Processing {len(all_favorite_companies)} total companies...")
         
-        for company in favorite_companies:
-            try:
-                if company in config.COMPANY_CAREER_PAGES:
-                    career_url = config.COMPANY_CAREER_PAGES[company]
-                    if career_url and career_url.strip():  # Skip empty URLs
-                        print(f"Scraping career page for: {company}")
-                        company_jobs = scrape_single_company_career_page(company, career_url)
-                        jobs.extend(company_jobs[:3])  # Limit to 3 jobs per company for memory
-                        companies_scraped += 1
-                        
-                        # Fast delay to prevent overwhelming servers
-                        time.sleep(0.2)  # Reduced from 0.3 to 0.2
-                        
-                        # Stop after 10 companies or 20 jobs (memory optimized)
-                        if companies_scraped >= 10 or len(jobs) >= 20:
-                            print(f"Career page limit reached: {companies_scraped} companies, {len(jobs)} jobs")
-                            break
+        # Process companies in batches of 20 to manage memory
+        batch_size = 20
+        for batch_start in range(0, len(all_favorite_companies), batch_size):
+            batch_end = min(batch_start + batch_size, len(all_favorite_companies))
+            batch_companies = all_favorite_companies[batch_start:batch_end]
+            
+            print(f"Processing batch {batch_start//batch_size + 1}: companies {batch_start+1}-{batch_end}")
+            
+            for company in batch_companies:
+                try:
+                    if company in config.COMPANY_CAREER_PAGES:
+                        career_url = config.COMPANY_CAREER_PAGES[company]
+                        if career_url and career_url.strip():  # Skip empty URLs
+                            print(f"Scraping career page for: {company}")
+                            company_jobs = scrape_single_company_career_page(company, career_url)
+                            jobs.extend(company_jobs[:2])  # Limit to 2 jobs per company for memory
+                            companies_scraped += 1
+                            
+                            # Fast delay to prevent overwhelming servers
+                            time.sleep(0.1)  # Reduced delay for speed
+                            
+                            # Memory check - if we have too many jobs, save and continue
+                            if len(jobs) >= 50:
+                                print(f"Memory threshold reached: {len(jobs)} jobs, saving batch...")
+                                save_jobs_to_db(jobs)
+                                jobs = []  # Clear memory
                 
-            except Exception as e:
-                print(f"Error scraping {company}: {e}")
-                continue
+                except Exception as e:
+                    print(f"Error scraping {company}: {e}")
+                    continue
+            
+            # Save batch to database to free memory
+            if jobs:
+                save_jobs_to_db(jobs)
+                jobs = []  # Clear memory after saving
+            
+            # Small delay between batches
+            time.sleep(0.5)
         
-        print(f"CAREER PAGES (MEMORY OPTIMIZED): Scraped {len(jobs)} jobs from {companies_scraped} favorite company career pages")
-        return jobs
+        print(f"COMPREHENSIVE CAREER PAGES: Scraped from {companies_scraped} companies (ALL COMPANIES)")
+        return []
         
     except Exception as e:
-        print(f"Error in favorite companies career page scraping: {e}")
+        print(f"Error in comprehensive career page scraping: {e}")
         return []
 
 def scrape_github_internships():

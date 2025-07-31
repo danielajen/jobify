@@ -386,34 +386,37 @@ const FavoriteCompanies = ({ onApply }) => {
   const [error, setError] = useState(null);
   const [applying, setApplying] = useState({});
   const [search, setSearch] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [hasNextPage, setHasNextPage] = useState(true);
+  const [totalCompanies, setTotalCompanies] = useState(0);
   const { user } = useUser();
 
   useEffect(() => {
-    if (COMPANIES.length > 0) {
-      fetchJobs();
-    }
-  }, []);
+    fetchJobs();
+  }, [currentPage]);
 
-  const fetchJobs = async () => {
+  const fetchJobs = async (page = 1) => {
     setRefreshing(true);
     setError(null);
     try {
-      const response = await fetch(`${API_URL}/linked-companies-jobs`);
+      const response = await fetch(`${API_URL}/linked-companies-jobs?page=${page}&per_page=20`);
       if (!response.ok) {
         throw new Error(`Server returned ${response.status} status`);
       }
       const data = await response.json();
 
-      // Sort companies: those with at least one job posted today go to the top
-      const sorted = [...data].sort((a, b) => {
-        const aHasNew = a.jobs.some(isJobPostedToday);
-        const bHasNew = b.jobs.some(isJobPostedToday);
-        if (aHasNew && !bHasNew) return -1;
-        if (!aHasNew && bHasNew) return 1;
-        return 0;
-      });
+      if (page === 1) {
+        // First page - replace data
+        setJobs(data.companies || []);
+      } else {
+        // Subsequent pages - append data
+        setJobs(prevJobs => [...prevJobs, ...(data.companies || [])]);
+      }
 
-      setJobs(sorted);
+      // Update pagination info
+      setHasNextPage(data.pagination?.has_next || false);
+      setTotalCompanies(data.pagination?.total_companies || 0);
+
     } catch (error) {
       console.error('Error fetching favorite jobs:', error);
       setError(`Failed to load jobs: ${error.message}`);
@@ -421,6 +424,19 @@ const FavoriteCompanies = ({ onApply }) => {
       setRefreshing(false);
       setLoading(false);
     }
+  };
+
+  const loadMoreCompanies = () => {
+    if (hasNextPage && !loading) {
+      const nextPage = currentPage + 1;
+      setCurrentPage(nextPage);
+      fetchJobs(nextPage);
+    }
+  };
+
+  const handleRefresh = () => {
+    setCurrentPage(1);
+    fetchJobs(1);
   };
 
   const handleApply = (job) => {
@@ -542,7 +558,7 @@ const FavoriteCompanies = ({ onApply }) => {
       >
         <Text style={styles.header}>SWE Internships 2026</Text>
         <Text style={styles.subHeader}>
-          {jobs.length} top companies monitored daily
+          {totalCompanies} top companies monitored daily
         </Text>
         <View style={styles.searchBarContainer}>
           <Ionicons name="search" size={20} color="#888" style={{ marginLeft: 8 }} />
@@ -575,11 +591,13 @@ const FavoriteCompanies = ({ onApply }) => {
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
-            onRefresh={fetchJobs}
+            onRefresh={handleRefresh}
             colors={["#1e88e5"]}
             tintColor="#1e88e5"
           />
         }
+        onEndReached={loadMoreCompanies}
+        onEndReachedThreshold={0.5}
         showsVerticalScrollIndicator={false}
       />
       <TouchableOpacity

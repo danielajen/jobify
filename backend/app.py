@@ -372,7 +372,7 @@ def get_linked_companies_jobs():
     if request.method == 'OPTIONS':
         return '', 200
     try:
-        cutoff_date = datetime.utcnow() - timedelta(days=7)
+        cutoff_date = datetime.utcnow() - timedelta(days=30)  # Extended to 30 days
         results = []
         
         # Check if we have any career page jobs
@@ -380,26 +380,36 @@ def get_linked_companies_jobs():
             Job.source.like('Career-%')
         ).first() is not None
         
-        # If no career page jobs exist, trigger career page scraping
+        # If no career page jobs exist, trigger comprehensive career page scraping
         if not career_jobs_exist:
-            logger.info("No career page jobs found - triggering career page scraping...")
+            logger.info("No career page jobs found - triggering comprehensive career page scraping...")
             try:
                 from scraper.job_scraper import scrape_favorite_companies_jobs
-                career_jobs = scrape_favorite_companies_jobs()
-                save_jobs_to_db(career_jobs)
-                logger.info(f"Career page scraping complete - {len(career_jobs)} jobs saved")
+                scrape_favorite_companies_jobs()  # This now processes ALL companies
+                logger.info("Comprehensive career page scraping complete")
             except Exception as e:
                 logger.error(f"Career page scraping failed: {str(e)}")
         
-        for company in Config.FAVORITE_COMPANIES:
+        # Get pagination parameters
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 20, type=int)
+        start_idx = (page - 1) * per_page
+        end_idx = start_idx + per_page
+        
+        # Get ALL companies with pagination
+        all_companies = Config.FAVORITE_COMPANIES[start_idx:end_idx]
+        
+        for company in all_companies:
+            # Get jobs from both career pages and general sources for this company
             company_jobs = Job.query.filter(
                 Job.company.ilike(f'%{company}%'),
                 Job.posted_at >= cutoff_date
             ).all()
+            
             intern_jobs = []
             for job in company_jobs:
                 title = job.title.lower()
-                is_intern = any(kw in title for kw in ['intern', 'internship', 'co-op'])
+                is_intern = any(kw in title for kw in ['intern', 'internship', 'co-op', 'student', 'new grad'])
                 if is_intern:
                     intern_jobs.append({
                         'id': job.id,
@@ -407,14 +417,34 @@ def get_linked_companies_jobs():
                         'location': job.location,
                         'posted_at': job.posted_at.isoformat() if job.posted_at else None,
                         'url': job.url,
-                        'description': job.description
+                        'description': job.description,
+                        'source': job.source
                     })
+            
             results.append({
-                'id': Config.FAVORITE_COMPANIES.index(company) + 1,
+                'id': start_idx + Config.FAVORITE_COMPANIES.index(company) + 1,
                 'name': company,
-                'jobs': intern_jobs
+                'jobs': intern_jobs,
+                'total_jobs': len(intern_jobs),
+                'has_career_page': company in Config.COMPANY_CAREER_PAGES
             })
-        return jsonify(results)
+        
+        # Add pagination info
+        total_companies = len(Config.FAVORITE_COMPANIES)
+        total_pages = (total_companies + per_page - 1) // per_page
+        
+        return jsonify({
+            'companies': results,
+            'pagination': {
+                'current_page': page,
+                'per_page': per_page,
+                'total_companies': total_companies,
+                'total_pages': total_pages,
+                'has_next': page < total_pages,
+                'has_prev': page > 1
+            }
+        })
+        
     except Exception as e:
         logger.error(f"Linked companies error: {str(e)}")
         return jsonify({'error': str(e)}), 500
@@ -2669,6 +2699,48 @@ SENDGRID_FROM_EMAIL = os.getenv('SENDGRID_FROM_EMAIL', 'danielajeni.11@gmail.com
 
 # Flask Secret Key
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'jobswipe-super-secret-key-2024-xyz123')
+
+# Add new endpoint for continuous loading of swiping jobs
+@app.route('/jobs/load-more', methods=['GET'])
+def load_more_swiping_jobs():
+    """Load more swiping jobs when user runs out - continuous loading"""
+    try:
+        # Get offset from query parameter
+        offset = request.args.get('offset', 0, type=int)
+        limit = request.args.get('limit', 10, type=int)
+        
+        # Get swiping jobs with offset for pagination
+        jobs = Job.query.filter(
+            Job.source.in_(['Glassdoor', 'BuiltIn', 'GitHub-Internships'])
+        ).order_by(Job.posted_at.desc()).offset(offset).limit(limit).all()
+        
+        job_list = []
+        for job in jobs:
+            job_list.append({
+                'id': job.id,
+                'title': job.title,
+                'company': job.company,
+                'location': job.location,
+                'description': job.description,
+                'url': job.url,
+                'source': job.source,
+                'posted_at': job.posted_at.isoformat() if job.posted_at else None
+            })
+        
+        # If we don't have enough jobs, trigger background scraping
+        if len(job_list) < limit and REDIS_AVAILABLE:
+            try:
+                celery.send_task('app.refresh_swiping_jobs_background')
+                logger.info("Queued background swiping job refresh for continuous loading")
+            except Exception as e:
+                logger.error(f"Failed to queue background refresh: {str(e)}")
+        
+        logger.info(f"Loaded {len(job_list)} more swiping jobs (offset: {offset})")
+        return jsonify(job_list)
+        
+    except Exception as e:
+        logger.error(f"Error loading more swiping jobs: {str(e)}")
+        return jsonify([])
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5050))

@@ -6,6 +6,10 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.action_chains import ActionChains
 from webdriver_manager.chrome import ChromeDriverManager
 import requests
 from bs4 import BeautifulSoup
@@ -16,20 +20,122 @@ from database.models import db, Job
 from urllib.parse import urljoin
 import time
 import random
+import json
 
-# Common headers to mimic a browser
+# Enhanced headers to mimic a real browser
 HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-    'Accept-Language': 'en-US,en;q=0.5',
+    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Accept-Encoding': 'gzip, deflate, br',
     'Connection': 'keep-alive',
-    'Upgrade-Insecure-Requests': '1'
+    'Upgrade-Insecure-Requests': '1',
+    'Sec-Fetch-Dest': 'document',
+    'Sec-Fetch-Mode': 'navigate',
+    'Sec-Fetch-Site': 'none',
+    'Sec-Fetch-User': '?1',
+    'Cache-Control': 'max-age=0'
 }
 
-# Glassdoor cookies - REPLACE THESE WITH YOUR ACTUAL COOKIES
-COOKIE_CF_CLEARANCE = "your_cf_clearance_cookie_here"
-COOKIE_GSESSIONID = "your_gsessionid_cookie_here"
-COOKIE_JSESSIONID = "your_jsessionid_cookie_here"
+def get_enhanced_chrome_options():
+    """Get enhanced Chrome options with anti-detection measures"""
+    options = Options()
+    
+    # Basic options
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--disable-gpu")
+    options.add_argument("--disable-extensions")
+    options.add_argument("--disable-plugins")
+    options.add_argument("--disable-images")  # Faster loading
+    options.add_argument("--disable-javascript")  # For basic scraping
+    
+    # Anti-detection measures
+    options.add_argument("--disable-blink-features=AutomationControlled")
+    options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    options.add_experimental_option('useAutomationExtension', False)
+    
+    # Enhanced user agent
+    options.add_argument("user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+    
+    # Window size to mimic real browser
+    options.add_argument("--window-size=1920,1080")
+    
+    # Additional preferences
+    prefs = {
+        "profile.default_content_setting_values": {
+            "notifications": 2,
+            "geolocation": 2,
+            "media_stream": 2
+        },
+        "profile.managed_default_content_settings": {
+            "images": 2
+        }
+    }
+    options.add_experimental_option("prefs", prefs)
+    
+    # Headless mode for production
+    if os.environ.get('DATABASE_URL'):  # Heroku environment
+        options.add_argument("--headless=new")
+    
+    return options
+
+def get_enhanced_chrome_options_with_js():
+    """Get Chrome options that allow JavaScript for dynamic content"""
+    options = get_enhanced_chrome_options()
+    options.add_argument("--enable-javascript")
+    return options
+
+def setup_driver_with_cookies(driver, cookies_dict, domain):
+    """Setup driver with cookies for bypassing protection"""
+    try:
+        # First visit the domain to set cookies context
+        driver.get(f"https://{domain}")
+        time.sleep(2)
+        
+        # Add cookies
+        for cookie_name, cookie_value in cookies_dict.items():
+            if cookie_value and cookie_value != "your_cookie_here":
+                try:
+                    driver.add_cookie({
+                        'name': cookie_name,
+                        'value': cookie_value,
+                        'domain': domain
+                    })
+                except Exception as e:
+                    print(f"Error adding cookie {cookie_name}: {e}")
+        
+        # Refresh page to apply cookies
+        driver.refresh()
+        time.sleep(3)
+        
+    except Exception as e:
+        print(f"Error setting up cookies: {e}")
+
+def human_like_scroll(driver):
+    """Perform human-like scrolling"""
+    try:
+        # Scroll down gradually
+        for i in range(3):
+            driver.execute_script(f"window.scrollTo(0, {1000 * (i + 1)});")
+            time.sleep(random.uniform(1, 3))
+        
+        # Scroll back up
+        driver.execute_script("window.scrollTo(0, 0);")
+        time.sleep(random.uniform(1, 2))
+        
+    except Exception as e:
+        print(f"Error during human-like scroll: {e}")
+
+def wait_for_element(driver, selector, timeout=10):
+    """Wait for element to be present"""
+    try:
+        element = WebDriverWait(driver, timeout).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, selector))
+        )
+        return element
+    except Exception:
+        return None
 
 def scrape_target_jobs():
     """Scrape jobs from general job boards"""
@@ -40,17 +146,17 @@ def scrape_target_jobs():
         jobs.extend(github_jobs)
         print(f"Scraped {len(github_jobs)} jobs from GitHub")
         
-        # Scrape BuiltIn
+        # Scrape BuiltIn with enhanced setup
         builtin_jobs = scrape_builtin_jobs(config.SOURCES['builtin'])
         jobs.extend(builtin_jobs)
         print(f"Scraped {len(builtin_jobs)} jobs from BuiltIn")
         
-        # Scrape Glassdoor
+        # Scrape Glassdoor with enhanced setup
         glassdoor_jobs = scrape_glassdoor_jobs(config.SOURCES['glassdoor'])
         jobs.extend(glassdoor_jobs)
         print(f"Scraped {len(glassdoor_jobs)} jobs from Glassdoor")
         
-        # Scrape Indeed
+        # Scrape Indeed with enhanced setup
         indeed_jobs = scrape_indeed_jobs(config.SOURCES['indeed'])
         jobs.extend(indeed_jobs)
         print(f"Scraped {len(indeed_jobs)} jobs from Indeed")
@@ -64,8 +170,8 @@ def scrape_github_jobs(url):
     """Scrape jobs from GitHub markdown repository"""
     jobs = []
     try:
-        # Fetch raw markdown content
-        response = requests.get(url, headers=HEADERS)
+        # Fetch raw markdown content with enhanced headers
+        response = requests.get(url, headers=HEADERS, timeout=30)
         
         if response.status_code == 200:
             # Parse markdown table directly
@@ -101,56 +207,71 @@ def scrape_github_jobs(url):
                         if '[' in position and ']' in position:
                             position = position.split('[')[1].split(']')[0]
                         
-                        # Location is third column
-                        location = cols[2]
+                        # Extract location
+                        location = cols[2] if len(cols) > 2 else "Remote"
                         
-                        # Extract application URL from fourth column
-                        apply_url = None
-                        url_cell = cols[3]
-                        # Find first valid URL in the cell
-                        url_match = re.search(r'https?://[^\s)\]]+', url_cell)
-                        if url_match:
-                            apply_url = url_match.group(0)
+                        # Extract URL
+                        url_col = cols[3] if len(cols) > 3 else ""
+                        job_url = ""
+                        if '[' in url_col and '](' in url_col:
+                            job_url = url_col.split('](')[1].split(')')[0]
+                        elif url_col.startswith('http'):
+                            job_url = url_col
+                        
+                        # Create job object
+                        job = {
+                            'title': position,
+                            'company': company,
+                            'location': location,
+                            'url': job_url,
+                            'source': 'github',
+                            'description': '',
+                            'posted_at': datetime.utcnow(),
+                            'keywords': 'intern,2026'
+                        }
                         
                         # Only process intern positions
-                        if apply_url and is_intern_position(position):
-                            job = {
-                                'title': position,
-                                'company': company,
-                                'location': location,
-                                'url': apply_url,
-                                'source': 'github',
-                                'description': '',
-                                'posted_at': datetime.utcnow(),
-                                'keywords': 'intern,2026'
-                            }
+                        if is_intern_position(job['title']):
                             jobs.append(job)
+                            
                     except Exception as e:
                         print(f"Error parsing GitHub job row: {e}")
+                        continue
+                        
+        else:
+            print(f"GitHub scraping failed with status code: {response.status_code}")
+            
     except Exception as e:
         print(f"GitHub scraping error: {e}")
     
     return jobs
 
 def scrape_builtin_jobs(url):
-    """Scrape jobs from BuiltIn using Selenium"""
+    """Scrape jobs from BuiltIn using enhanced Selenium setup"""
     jobs = []
+    driver = None
     
-    # Chrome options
-    options = Options()
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
-    options.add_argument("--disable-blink-features=AutomationControlled")
-    options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
-    options.add_experimental_option("excludeSwitches", ["enable-automation"])
-    options.add_experimental_option('useAutomationExtension', False)
-    options.add_argument("--headless=new")  # Run in headless mode
-
     try:
-        driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+        # Use enhanced Chrome options
+        options = get_enhanced_chrome_options_with_js()
+        
+        # Setup Chrome driver
+        if os.environ.get('DATABASE_URL'):  # Heroku environment
+            # Use Chrome for Testing on Heroku
+            driver = webdriver.Chrome(options=options)
+        else:
+            # Use ChromeDriverManager locally
+            driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+        
         print(f"Navigating to BuiltIn URL: {url}")
         driver.get(url)
-        time.sleep(3 + random.uniform(1, 3))  # Random delay to mimic human
+        
+        # Human-like behavior
+        time.sleep(random.uniform(3, 5))
+        human_like_scroll(driver)
+        
+        # Wait for content to load
+        wait_for_element(driver, '.job-item, .job-row', timeout=15)
         
         # Get page source and parse
         soup = BeautifulSoup(driver.page_source, 'html.parser')
@@ -159,6 +280,9 @@ def scrape_builtin_jobs(url):
         job_cards = soup.select('.job-item')
         if not job_cards:
             job_cards = soup.select('.job-row')
+        if not job_cards:
+            job_cards = soup.select('[class*="job"]')  # Fallback selector
+            
         print(f"Number of job cards found on BuiltIn: {len(job_cards)}")
             
         for i, card in enumerate(job_cards):
@@ -175,100 +299,100 @@ def scrape_builtin_jobs(url):
                     'keywords': 'intern,2026'
                 }
                 
-                # Extract title
-                title_elem = card.select_one('.title')
-                if title_elem:
-                    job['title'] = title_elem.text.strip()
+                # Extract title with multiple selectors
+                title_selectors = ['.title', '.job-title', 'h3', 'h4', '[class*="title"]']
+                for selector in title_selectors:
+                    title_elem = card.select_one(selector)
+                    if title_elem and title_elem.text.strip():
+                        job['title'] = title_elem.text.strip()
+                        break
                 
-                # Extract company name
-                company_elem = card.select_one('.company .name')
-                if company_elem:
-                    job['company'] = company_elem.text.strip()
+                # Extract company name with multiple selectors
+                company_selectors = ['.company .name', '.company', '[class*="company"]']
+                for selector in company_selectors:
+                    company_elem = card.select_one(selector)
+                    if company_elem and company_elem.text.strip():
+                        job['company'] = company_elem.text.strip()
+                        break
                 
-                # Extract location
-                location_elem = card.select_one('.location')
-                if location_elem:
-                    job['location'] = location_elem.text.strip()
+                # Extract location with multiple selectors
+                location_selectors = ['.location', '[class*="location"]']
+                for selector in location_selectors:
+                    location_elem = card.select_one(selector)
+                    if location_elem and location_elem.text.strip():
+                        job['location'] = location_elem.text.strip()
+                        break
                 
-                # Extract URL
-                url_elem = card.select_one('a.job-row-anchor')
-                if not url_elem:
-                    url_elem = card.select_one('a[href*="/job/"]')
-                if url_elem:
-                    job['url'] = urljoin(url, url_elem['href'])
+                # Extract URL with multiple selectors
+                url_selectors = ['a.job-row-anchor', 'a[href*="/job/"]', 'a[href*="careers"]', 'a']
+                for selector in url_selectors:
+                    url_elem = card.select_one(selector)
+                    if url_elem and url_elem.get('href'):
+                        job['url'] = urljoin(url, url_elem['href'])
+                        break
                 
                 # Only process intern positions
                 if is_intern_position(job['title']):
                     jobs.append(job)
                     print(f"Added BuiltIn job #{i+1}: {job['title']}")
+                    
             except Exception as e:
                 print(f"Error parsing BuiltIn job card: {e}")
+                
     except Exception as e:
         print(f"BuiltIn scraping error: {e}")
     finally:
-        if 'driver' in locals():
+        if driver:
             driver.quit()
     
     return jobs
 
 def scrape_glassdoor_jobs(url):
-    """Scrape jobs from Glassdoor using cookies to bypass protection"""
+    """Scrape jobs from Glassdoor using enhanced setup with cookies"""
     jobs = []
+    driver = None
     
-    # Chrome options
-    options = Options()
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
-    options.add_argument("--disable-blink-features=AutomationControlled")
-    options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
-    options.add_experimental_option("excludeSwitches", ["enable-automation"])
-    options.add_experimental_option('useAutomationExtension', False)
-    options.add_argument("--headless=new")  # Run in headless mode
-
     try:
-        driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+        # Use enhanced Chrome options
+        options = get_enhanced_chrome_options_with_js()
         
-        # First visit the domain to set cookies context
-        driver.get("https://www.glassdoor.ca")
+        # Setup Chrome driver
+        if os.environ.get('DATABASE_URL'):  # Heroku environment
+            driver = webdriver.Chrome(options=options)
+        else:
+            driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
         
-        # Add cookies to bypass protection
-        driver.add_cookie({
-            'name': 'cf_clearance',
-            'value': COOKIE_CF_CLEARANCE,
-            'domain': '.glassdoor.ca',
-            'path': '/',
-            'secure': True
-        })
-        driver.add_cookie({
-            'name': 'GSESSIONID',
-            'value': COOKIE_GSESSIONID,
-            'domain': '.glassdoor.ca',
-            'path': '/',
-            'secure': True
-        })
-        driver.add_cookie({
-            'name': 'JSESSIONID',
-            'value': COOKIE_JSESSIONID,
-            'domain': '.glassdoor.ca',
-            'path': '/',
-            'secure': True
-        })
+        # Setup cookies for Glassdoor
+        cookies = {
+            'cf_clearance': os.environ.get('GLASSDOOR_CF_CLEARANCE', ''),
+            'gsessionid': os.environ.get('GLASSDOOR_GSESSIONID', ''),
+            'jsessionid': os.environ.get('GLASSDOOR_JSESSIONID', '')
+        }
         
-        print("Navigating to Glassdoor URL with cookies...")
+        # Setup cookies if available
+        if any(cookies.values()):
+            setup_driver_with_cookies(driver, cookies, 'glassdoor.ca')
+        
+        print(f"Navigating to Glassdoor URL: {url}")
         driver.get(url)
-        time.sleep(5)
         
-        # Check for Cloudflare challenge
-        if "Just a moment" in driver.title or "Cloudflare" in driver.page_source:
-            print("⚠️ Cloudflare challenge detected! Update your cookies")
-            return jobs
-
+        # Human-like behavior
+        time.sleep(random.uniform(3, 5))
+        human_like_scroll(driver)
+        
+        # Wait for content to load
+        wait_for_element(driver, '.job-search-key-l2wjgv', timeout=15)
+        
         # Get page source and parse
         soup = BeautifulSoup(driver.page_source, 'html.parser')
-        job_cards = soup.select('.react-job-listing, .jobCard, li.react-job-listing, div[data-test="jobListing"]')
-        print(f"Number of job_cards found: {len(job_cards)}")
-
-        # Process all job cards
+        
+        # Find job cards - updated selectors for Glassdoor
+        job_cards = soup.select('.job-search-key-l2wjgv')
+        if not job_cards:
+            job_cards = soup.select('[class*="job"]')
+            
+        print(f"Number of job cards found on Glassdoor: {len(job_cards)}")
+            
         for i, card in enumerate(job_cards):
             try:
                 # Create job object
@@ -284,67 +408,77 @@ def scrape_glassdoor_jobs(url):
                 }
                 
                 # Extract title
-                title_elem = card.select_one('a, h2, h3, [data-test*="job"], .job-title, .jobTitle')
+                title_elem = card.select_one('a[data-test="job-link"]')
                 if title_elem:
                     job['title'] = title_elem.text.strip()
                 
                 # Extract company name
-                company_elem = card.select_one('[data-test*="company"], .employer, .company-name, .employerName')
+                company_elem = card.select_one('[data-test="employer-name"]')
                 if company_elem:
                     job['company'] = company_elem.text.strip()
                 
                 # Extract location
-                location_elem = card.select_one('[data-test*="location"], .location, .job-location')
+                location_elem = card.select_one('[data-test="location"]')
                 if location_elem:
                     job['location'] = location_elem.text.strip()
                 
                 # Extract URL
-                url_elem = card.select_one('a[href]')
-                if url_elem:
+                url_elem = card.select_one('a[data-test="job-link"]')
+                if url_elem and url_elem.get('href'):
                     job['url'] = urljoin(url, url_elem['href'])
                 
                 # Only process intern positions
                 if is_intern_position(job['title']):
                     jobs.append(job)
                     print(f"Added Glassdoor job #{i+1}: {job['title']}")
+                    
+            except Exception as e:
+                print(f"Error parsing Glassdoor job card: {e}")
                 
-            except Exception as parse_err:
-                print(f"⚠️ Error parsing Glassdoor job card: {parse_err}")
-    except Exception as driver_err:
-        print(f"❌ Error loading Glassdoor page: {driver_err}")
+    except Exception as e:
+        print(f"Glassdoor scraping error: {e}")
     finally:
-        if 'driver' in locals():
+        if driver:
             driver.quit()
-
+    
     return jobs
 
 def scrape_indeed_jobs(url):
-    """Scrape jobs from Indeed using Selenium"""
+    """Scrape jobs from Indeed using enhanced setup"""
     jobs = []
+    driver = None
     
-    # Chrome options
-    options = Options()
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
-    options.add_argument("--disable-blink-features=AutomationControlled")
-    options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
-    options.add_experimental_option("excludeSwitches", ["enable-automation"])
-    options.add_experimental_option('useAutomationExtension', False)
-    options.add_argument("--headless=new")  # Run in headless mode
-
     try:
-        driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+        # Use enhanced Chrome options
+        options = get_enhanced_chrome_options_with_js()
+        
+        # Setup Chrome driver
+        if os.environ.get('DATABASE_URL'):  # Heroku environment
+            driver = webdriver.Chrome(options=options)
+        else:
+            driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+        
         print(f"Navigating to Indeed URL: {url}")
         driver.get(url)
-        time.sleep(3 + random.uniform(1, 3))  # Random delay to mimic human
+        
+        # Human-like behavior
+        time.sleep(random.uniform(3, 5))
+        human_like_scroll(driver)
+        
+        # Wait for content to load
+        wait_for_element(driver, '.job_seen_beacon', timeout=15)
         
         # Get page source and parse
         soup = BeautifulSoup(driver.page_source, 'html.parser')
         
-        job_cards = soup.select('.jobsearch-SerpJobCard, .cardOutline')
+        # Find job cards - updated selectors for Indeed
+        job_cards = soup.select('.job_seen_beacon')
+        if not job_cards:
+            job_cards = soup.select('[class*="job"]')
+            
         print(f"Number of job cards found on Indeed: {len(job_cards)}")
-        
-        for i, job_card in enumerate(job_cards):
+            
+        for i, card in enumerate(job_cards):
             try:
                 # Create job object
                 job = {
@@ -358,36 +492,38 @@ def scrape_indeed_jobs(url):
                     'keywords': 'intern,2026'
                 }
                 
-                # Extract elements
-                title_elem = job_card.select_one('.jobtitle, .jobTitle')
-                company_elem = job_card.select_one('.company, .companyName')
-                location_elem = job_card.select_one('.location, .companyLocation')
-                
-                # Extract URL element
-                url_elem = title_elem if title_elem and title_elem.get('href') else job_card.select_one('a.jobtitle, a.jobTitle')
-                
+                # Extract title
+                title_elem = card.select_one('h2 a')
                 if title_elem:
                     job['title'] = title_elem.text.strip()
+                
+                # Extract company name
+                company_elem = card.select_one('[data-testid="company-name"]')
                 if company_elem:
                     job['company'] = company_elem.text.strip()
+                
+                # Extract location
+                location_elem = card.select_one('[data-testid="location"]')
                 if location_elem:
                     job['location'] = location_elem.text.strip()
-                if url_elem:
-                    if url_elem['href'].startswith('/'):
-                        job['url'] = "https://indeed.com" + url_elem['href']
-                    else:
-                        job['url'] = url_elem['href']
+                
+                # Extract URL
+                url_elem = card.select_one('h2 a')
+                if url_elem and url_elem.get('href'):
+                    job['url'] = urljoin(url, url_elem['href'])
                 
                 # Only process intern positions
                 if is_intern_position(job['title']):
                     jobs.append(job)
                     print(f"Added Indeed job #{i+1}: {job['title']}")
+                    
             except Exception as e:
                 print(f"Error parsing Indeed job card: {e}")
+                
     except Exception as e:
         print(f"Indeed scraping error: {e}")
     finally:
-        if 'driver' in locals():
+        if driver:
             driver.quit()
     
     return jobs

@@ -486,7 +486,6 @@ class AutoApplier:
         try:
             # Parse error type
             error_type = "UNKNOWN"
-            field_name = None
             
             if "could not locate element" in error_message:
                 error_type = "ELEMENT_MISSING"
@@ -494,18 +493,20 @@ class AutoApplier:
                 error_type = "UPLOAD_FAILED"
             elif "required field" in error_message:
                 error_type = "FIELD_MISSING"
-                # Extract field name from error message
-                field_match = re.search(r"field '(.+?)'", error_message)
-                if field_match:
-                    field_name = field_match.group(1)
+            elif "workday" in error_message.lower():
+                error_type = "WORKDAY_ERROR"
+            elif "linkedin" in error_message.lower():
+                error_type = "LINKEDIN_ERROR"
+            elif "indeed" in error_message.lower():
+                error_type = "INDEED_ERROR"
             
-            # Save to database
+            # Save to database - match the ApplicationError model fields
             error = ApplicationError(
                 job_id=job_id,
                 user_id=user_id,
                 error_type=error_type,
-                field_name=field_name,
-                required_value=None
+                error_message=error_message,
+                job_url=None  # Will be set if available
             )
             db.session.add(error)
             db.session.commit()

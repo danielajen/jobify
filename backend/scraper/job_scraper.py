@@ -609,6 +609,17 @@ def save_jobs_to_db(jobs):
                     ).first()
                     
                     if not existing_job:
+                        # Convert posted_at string to datetime object
+                        posted_at = None
+                        if job_data.get('posted_at'):
+                            try:
+                                if isinstance(job_data['posted_at'], str):
+                                    posted_at = datetime.fromisoformat(job_data['posted_at'].replace('Z', '+00:00'))
+                                else:
+                                    posted_at = job_data['posted_at']
+                            except:
+                                posted_at = datetime.now()
+                        
                         job = Job(
                             title=job_data['title'],
                             company=job_data['company'],
@@ -616,7 +627,7 @@ def save_jobs_to_db(jobs):
                             description=job_data['description'],
                             url=job_data['url'],
                             source=job_data['source'],
-                            posted_at=datetime.fromisoformat(job_data['posted_at'])
+                            posted_at=posted_at
                         )
                         db.session.add(job)
                         saved_count += 1

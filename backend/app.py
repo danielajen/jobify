@@ -407,7 +407,7 @@ def get_jobs():
     """Get jobs with background refresh"""
     try:
         # 1. Return cached jobs immediately
-        jobs = Job.query.filter_by(is_active=True).order_by(Job.posted_date.desc()).limit(100).all()
+        jobs = Job.query.order_by(Job.posted_date.desc()).limit(100).all()
         
         job_list = []
         for job in jobs:
@@ -430,7 +430,7 @@ def get_jobs():
                 initial_job_scraping()
                 
                 # Get jobs again after scraping
-                jobs = Job.query.filter_by(is_active=True).order_by(Job.posted_date.desc()).limit(100).all()
+                jobs = Job.query.order_by(Job.posted_date.desc()).limit(100).all()
                 job_list = []
                 for job in jobs:
                     job_list.append({
@@ -2582,7 +2582,7 @@ def get_cached_jobs():
     """Get jobs from cache/database immediately without triggering scraping"""
     try:
         # Get jobs from database (cached results)
-        jobs = Job.query.filter_by(is_active=True).order_by(Job.posted_date.desc()).limit(100).all()
+        jobs = Job.query.order_by(Job.posted_date.desc()).limit(100).all()
         
         job_list = []
         for job in jobs:

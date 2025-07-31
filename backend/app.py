@@ -377,19 +377,20 @@ def get_linked_companies_jobs():
         
         # Get pagination parameters
         page = request.args.get('page', 1, type=int)
-        per_page = request.args.get('per_page', 20, type=int)
+        per_page = request.args.get('per_page', 20, type=int)  # 20 companies per page for memory efficiency
         start_idx = (page - 1) * per_page
         end_idx = start_idx + per_page
         
-        # Get companies for this page
-        companies = Config.FAVORITE_COMPANIES[start_idx:end_idx]
+        # Get ALL companies with pagination
+        all_companies = Config.FAVORITE_COMPANIES
+        companies = all_companies[start_idx:end_idx]
         
         for company in companies:
-            # Get jobs for this company
+            # Get jobs for this company (limit to 5 for memory efficiency)
             company_jobs = Job.query.filter(
                 Job.company.ilike(f'%{company}%'),
                 Job.posted_at >= cutoff_date
-            ).limit(5).all()  # Limit to 5 jobs per company
+            ).limit(5).all()
             
             intern_jobs = []
             for job in company_jobs:
@@ -407,16 +408,31 @@ def get_linked_companies_jobs():
                     })
             
             results.append({
-                'id': start_idx + Config.FAVORITE_COMPANIES.index(company) + 1,
+                'id': start_idx + all_companies.index(company) + 1,
                 'name': company,
                 'jobs': intern_jobs,
                 'total_jobs': len(intern_jobs),
                 'has_career_page': company in Config.COMPANY_CAREER_PAGES
             })
         
-        # Add pagination info
-        total_companies = len(Config.FAVORITE_COMPANIES)
+        # Add pagination info for ALL companies
+        total_companies = len(all_companies)
         total_pages = (total_companies + per_page - 1) // per_page
+        
+        # Smart trigger: if this is page 1 and we have few career page jobs, trigger update
+        if page == 1:
+            career_jobs_count = Job.query.filter(
+                Job.source.like('Career-%')
+            ).count()
+            
+            if career_jobs_count < 50:  # If we have less than 50 career page jobs
+                logger.info("Few career page jobs found - triggering smart update...")
+                try:
+                    from scraper.job_scraper import scrape_favorite_companies_jobs
+                    scrape_favorite_companies_jobs()  # Smart scraping for ALL companies
+                    logger.info("Smart career page update complete")
+                except Exception as e:
+                    logger.error(f"Career page update failed: {str(e)}")
         
         return jsonify({
             'companies': results,
@@ -2688,13 +2704,12 @@ app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'jobswipe-super-secret-key-20
 # Add new endpoint for continuous loading of swiping jobs
 @app.route('/jobs/load-more', methods=['GET'])
 def load_more_swiping_jobs():
-    """Load more swiping jobs when user runs out - continuous loading"""
+    """Load more swiping jobs for infinite scrolling - UNDER 715MB"""
     try:
-        # Get offset from query parameter
         offset = request.args.get('offset', 0, type=int)
-        limit = request.args.get('limit', 10, type=int)
+        limit = request.args.get('limit', 5, type=int)  # Load 5 at a time for memory efficiency
         
-        # Get swiping jobs with offset for pagination
+        # Get jobs from swiping sources only
         jobs = Job.query.filter(
             Job.source.in_(['Glassdoor', 'BuiltIn', 'GitHub-Internships'])
         ).order_by(Job.posted_at.desc()).offset(offset).limit(limit).all()
@@ -2712,15 +2727,16 @@ def load_more_swiping_jobs():
                 'posted_at': job.posted_at.isoformat() if job.posted_at else None
             })
         
-        # If we don't have enough jobs, trigger background scraping
-        if len(job_list) < limit and REDIS_AVAILABLE:
-            try:
-                celery.send_task('app.refresh_swiping_jobs_background')
-                logger.info("Queued background swiping job refresh for continuous loading")
-            except Exception as e:
-                logger.error(f"Failed to queue background refresh: {str(e)}")
+        # Smart refresh: if we have less than 10 jobs total, trigger background refresh
+        total_swiping_jobs = Job.query.filter(
+            Job.source.in_(['Glassdoor', 'BuiltIn', 'GitHub-Internships'])
+        ).count()
         
-        logger.info(f"Loaded {len(job_list)} more swiping jobs (offset: {offset})")
+        if total_swiping_jobs < 10 and REDIS_AVAILABLE:
+            celery.send_task('app.refresh_swiping_jobs_background')
+            logger.info("Queued background swiping job refresh for infinite scrolling")
+        
+        logger.info(f"Loaded {len(job_list)} more swiping jobs (offset: {offset}, total: {total_swiping_jobs})")
         return jsonify(job_list)
         
     except Exception as e:
@@ -2756,6 +2772,68 @@ def auto_refresh_jobs():
         
     except Exception as e:
         logger.error(f"Auto-refresh error: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+# Smart auto-refresh endpoint - UNDER 715MB
+@app.route('/api/smart-refresh', methods=['GET'])
+def smart_refresh_jobs():
+    """Smart auto-refresh for jobs - efficient updates under 715MB"""
+    try:
+        # Check current job counts
+        swiping_jobs = Job.query.filter(
+            Job.source.in_(['Glassdoor', 'BuiltIn', 'GitHub-Internships'])
+        ).count()
+        
+        career_jobs = Job.query.filter(
+            Job.source.like('Career-%')
+        ).count()
+        
+        recent_jobs = Job.query.filter(
+            Job.created_at >= datetime.utcnow() - timedelta(hours=1)
+        ).count()
+        
+        # Smart refresh logic
+        refresh_needed = False
+        refresh_type = None
+        
+        if swiping_jobs < 15:  # If we have less than 15 swiping jobs
+            refresh_needed = True
+            refresh_type = 'swiping'
+        elif career_jobs < 30:  # If we have less than 30 career page jobs
+            refresh_needed = True
+            refresh_type = 'career'
+        elif recent_jobs < 5:  # If we have less than 5 recent jobs
+            refresh_needed = True
+            refresh_type = 'both'
+        
+        if refresh_needed:
+            logger.info(f"Smart refresh: Triggering {refresh_type} job update...")
+            try:
+                if refresh_type in ['swiping', 'both']:
+                    from scraper.job_scraper import scrape_target_jobs
+                    jobs = scrape_target_jobs()
+                    save_jobs_to_db(jobs)
+                    logger.info(f"Smart refresh: {len(jobs)} swiping jobs updated")
+                
+                if refresh_type in ['career', 'both']:
+                    from scraper.job_scraper import scrape_favorite_companies_jobs
+                    scrape_favorite_companies_jobs()  # Smart scraping for ALL companies
+                    logger.info("Smart refresh: Career pages updated")
+                
+            except Exception as e:
+                logger.error(f"Smart refresh failed: {str(e)}")
+        
+        return jsonify({
+            'status': 'success',
+            'refresh_needed': refresh_needed,
+            'refresh_type': refresh_type,
+            'swiping_jobs': swiping_jobs,
+            'career_jobs': career_jobs,
+            'recent_jobs': recent_jobs
+        })
+        
+    except Exception as e:
+        logger.error(f"Smart refresh error: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':

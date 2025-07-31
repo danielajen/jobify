@@ -28,7 +28,7 @@ const JobSwiper = ({ onSaveJob, onApplyJob }) => {
     fetchJobs();
   }, []);
 
-  // Load more jobs when user is close to running out
+  // True infinite scrolling - load more when user reaches last job
   useEffect(() => {
     if (currentIndex >= jobs.length - 1 && jobs.length > 0) {
       loadMoreJobs();
@@ -50,7 +50,9 @@ const JobSwiper = ({ onSaveJob, onApplyJob }) => {
         if (Array.isArray(newJobs) && newJobs.length > 0) {
           setJobs(prevJobs => [...prevJobs, ...newJobs]);
           setJobOffset(prevOffset => prevOffset + newJobs.length);
-          console.log(`Loaded ${newJobs.length} more jobs`);
+          console.log(`Infinite scroll: Loaded ${newJobs.length} more jobs (total: ${jobs.length + newJobs.length})`);
+        } else {
+          console.log('No more jobs available - reached end of infinite scroll');
         }
       }
     } catch (error) {

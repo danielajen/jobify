@@ -140,60 +140,38 @@ def scrape_target_jobs():
         return []
 
 def scrape_favorite_companies_jobs():
-    """Scrape jobs from ALL favorite company career pages with smart memory management"""
-    print("Starting COMPREHENSIVE career page scraping (ALL COMPANIES, MEMORY OPTIMIZED)...")
+    """Fast career page scraping - 20 companies at a time with quick updates"""
+    print("Starting FAST career page scraping (20 companies, quick updates)...")
     jobs = []
     companies_scraped = 0
     
     try:
-        # Get ALL companies but process in batches to manage memory
-        all_favorite_companies = config.FAVORITE_COMPANIES
-        print(f"Processing {len(all_favorite_companies)} total companies...")
+        # Get only first 20 companies for speed
+        companies_to_scrape = config.FAVORITE_COMPANIES[:20]
+        print(f"Scraping {len(companies_to_scrape)} companies quickly...")
         
-        # Process companies in batches of 20 to manage memory
-        batch_size = 20
-        for batch_start in range(0, len(all_favorite_companies), batch_size):
-            batch_end = min(batch_start + batch_size, len(all_favorite_companies))
-            batch_companies = all_favorite_companies[batch_start:batch_end]
-            
-            print(f"Processing batch {batch_start//batch_size + 1}: companies {batch_start+1}-{batch_end}")
-            
-            for company in batch_companies:
-                try:
-                    if company in config.COMPANY_CAREER_PAGES:
-                        career_url = config.COMPANY_CAREER_PAGES[company]
-                        if career_url and career_url.strip():  # Skip empty URLs
-                            print(f"Scraping career page for: {company}")
-                            company_jobs = scrape_single_company_career_page(company, career_url)
-                            jobs.extend(company_jobs[:2])  # Limit to 2 jobs per company for memory
-                            companies_scraped += 1
-                            
-                            # Fast delay to prevent overwhelming servers
-                            time.sleep(0.1)  # Reduced delay for speed
-                            
-                            # Memory check - if we have too many jobs, save and continue
-                            if len(jobs) >= 50:
-                                print(f"Memory threshold reached: {len(jobs)} jobs, saving batch...")
-                                save_jobs_to_db(jobs)
-                                jobs = []  # Clear memory
+        for company in companies_to_scrape:
+            try:
+                if company in config.COMPANY_CAREER_PAGES:
+                    career_url = config.COMPANY_CAREER_PAGES[company]
+                    if career_url and career_url.strip():
+                        print(f"Quick scrape: {company}")
+                        company_jobs = scrape_single_company_career_page(company, career_url)
+                        jobs.extend(company_jobs[:1])  # Only 1 job per company for speed
+                        companies_scraped += 1
+                        
+                        # Very fast delay
+                        time.sleep(0.05)  # 50ms delay
                 
-                except Exception as e:
-                    print(f"Error scraping {company}: {e}")
-                    continue
-            
-            # Save batch to database to free memory
-            if jobs:
-                save_jobs_to_db(jobs)
-                jobs = []  # Clear memory after saving
-            
-            # Small delay between batches
-            time.sleep(0.5)
+            except Exception as e:
+                print(f"Error scraping {company}: {e}")
+                continue
         
-        print(f"COMPREHENSIVE CAREER PAGES: Scraped from {companies_scraped} companies (ALL COMPANIES)")
-        return []
+        print(f"FAST CAREER PAGES: {len(jobs)} jobs from {companies_scraped} companies")
+        return jobs
         
     except Exception as e:
-        print(f"Error in comprehensive career page scraping: {e}")
+        print(f"Error in fast career page scraping: {e}")
         return []
 
 def scrape_github_internships():

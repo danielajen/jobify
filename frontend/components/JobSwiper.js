@@ -30,14 +30,14 @@ const JobSwiper = ({ onSaveJob, onApplyJob }) => {
 
   // Load more jobs when user is close to running out
   useEffect(() => {
-    if (currentIndex >= jobs.length - 2 && jobs.length > 0) {
+    if (currentIndex >= jobs.length - 1 && jobs.length > 0) {
       loadMoreJobs();
     }
   }, [currentIndex, jobs.length]);
 
   const loadMoreJobs = async () => {
     try {
-      const response = await fetch(`https://jobswipe-app-e625703f9b1e.herokuapp.com/jobs/load-more?offset=${jobOffset}&limit=10`, {
+      const response = await fetch(`https://jobswipe-app-e625703f9b1e.herokuapp.com/jobs/load-more?offset=${jobOffset}&limit=5`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -50,7 +50,7 @@ const JobSwiper = ({ onSaveJob, onApplyJob }) => {
         if (Array.isArray(newJobs) && newJobs.length > 0) {
           setJobs(prevJobs => [...prevJobs, ...newJobs]);
           setJobOffset(prevOffset => prevOffset + newJobs.length);
-          console.log(`Loaded ${newJobs.length} more jobs (total: ${jobs.length + newJobs.length})`);
+          console.log(`Loaded ${newJobs.length} more jobs`);
         }
       }
     } catch (error) {

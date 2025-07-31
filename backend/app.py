@@ -372,23 +372,8 @@ def get_linked_companies_jobs():
     if request.method == 'OPTIONS':
         return '', 200
     try:
-        cutoff_date = datetime.utcnow() - timedelta(days=30)  # Extended to 30 days
+        cutoff_date = datetime.utcnow() - timedelta(days=30)
         results = []
-        
-        # Check if we have any career page jobs
-        career_jobs_exist = Job.query.filter(
-            Job.source.like('Career-%')
-        ).first() is not None
-        
-        # If no career page jobs exist, trigger comprehensive career page scraping
-        if not career_jobs_exist:
-            logger.info("No career page jobs found - triggering comprehensive career page scraping...")
-            try:
-                from scraper.job_scraper import scrape_favorite_companies_jobs
-                scrape_favorite_companies_jobs()  # This now processes ALL companies
-                logger.info("Comprehensive career page scraping complete")
-            except Exception as e:
-                logger.error(f"Career page scraping failed: {str(e)}")
         
         # Get pagination parameters
         page = request.args.get('page', 1, type=int)
@@ -396,15 +381,15 @@ def get_linked_companies_jobs():
         start_idx = (page - 1) * per_page
         end_idx = start_idx + per_page
         
-        # Get ALL companies with pagination
-        all_companies = Config.FAVORITE_COMPANIES[start_idx:end_idx]
+        # Get companies for this page
+        companies = Config.FAVORITE_COMPANIES[start_idx:end_idx]
         
-        for company in all_companies:
-            # Get jobs from both career pages and general sources for this company
+        for company in companies:
+            # Get jobs for this company
             company_jobs = Job.query.filter(
                 Job.company.ilike(f'%{company}%'),
                 Job.posted_at >= cutoff_date
-            ).all()
+            ).limit(5).all()  # Limit to 5 jobs per company
             
             intern_jobs = []
             for job in company_jobs:
@@ -2741,6 +2726,37 @@ def load_more_swiping_jobs():
     except Exception as e:
         logger.error(f"Error loading more swiping jobs: {str(e)}")
         return jsonify([])
+
+# Simple auto-refresh endpoint
+@app.route('/api/auto-refresh', methods=['GET'])
+def auto_refresh_jobs():
+    """Quick auto-refresh for jobs - limited scope for speed"""
+    try:
+        # Quick check if we need to refresh
+        recent_jobs = Job.query.filter(
+            Job.created_at >= datetime.utcnow() - timedelta(hours=1)
+        ).count()
+        
+        if recent_jobs < 10:  # If we have less than 10 recent jobs
+            logger.info("Auto-refresh: Triggering quick job update...")
+            try:
+                # Quick swiping job refresh only
+                from scraper.job_scraper import scrape_target_jobs
+                jobs = scrape_target_jobs()
+                save_jobs_to_db(jobs)
+                logger.info(f"Auto-refresh complete: {len(jobs)} jobs")
+            except Exception as e:
+                logger.error(f"Auto-refresh failed: {str(e)}")
+        
+        return jsonify({
+            'status': 'success',
+            'recent_jobs': recent_jobs,
+            'refreshed': recent_jobs < 10
+        })
+        
+    except Exception as e:
+        logger.error(f"Auto-refresh error: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5050))

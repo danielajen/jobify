@@ -24,7 +24,7 @@ class Job(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(200), nullable=False)
     company = db.Column(db.String(100), nullable=False)
-    location = db.Column(db.String(100))
+    location = db.Column(db.String(500))
     description = db.Column(db.Text)
     url = db.Column(db.String(500))
     posted_at = db.Column(db.DateTime)

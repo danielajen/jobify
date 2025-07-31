@@ -146,8 +146,8 @@ def scrape_favorite_companies_jobs():
     companies_scraped = 0
     
     try:
-        # Get only first 20 companies for speed
-        companies_to_scrape = config.FAVORITE_COMPANIES[:20]
+        # Get only first 50 companies for speed
+        companies_to_scrape = config.FAVORITE_COMPANIES[:50]
         print(f"Scraping {len(companies_to_scrape)} companies quickly...")
         
         for company in companies_to_scrape:

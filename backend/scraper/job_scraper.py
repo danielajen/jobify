@@ -137,7 +137,7 @@ def scrape_github_internships():
                                     'description': '',
                                     'url': url,
                                     'source': 'GitHub-Internships',
-                                    'posted_date': datetime.now().isoformat()
+                                    'posted_at': datetime.now().isoformat()
                                 })
         
         print(f"Scraped {len(jobs)} GitHub internships")
@@ -171,7 +171,7 @@ def scrape_glassdoor_jobs():
                         'description': '',
                         'url': f"https://www.glassdoor.com{card.find('a')['href']}" if card.find('a') else '',
                         'source': 'Glassdoor',
-                        'posted_date': datetime.now().isoformat()
+                        'posted_at': datetime.now().isoformat()
                     })
         
         print(f"Scraped {len(jobs)} Glassdoor jobs")
@@ -205,7 +205,7 @@ def scrape_builtin_jobs():
                         'description': '',
                         'url': f"https://builtintoronto.com{card.find('a')['href']}" if card.find('a') else '',
                         'source': 'BuiltIn',
-                        'posted_date': datetime.now().isoformat()
+                        'posted_at': datetime.now().isoformat()
                     })
         
         print(f"Scraped {len(jobs)} BuiltIn jobs")
@@ -274,8 +274,8 @@ def scrape_single_company_career_page(company, career_url):
                         'location': 'United States',
                         'description': f'Job at {company} - {title}',
                         'url': job_url,
-                        'source': f'Career-{company}',
-                        'posted_date': datetime.now().isoformat()
+                                                    'source': f'Career-{company}',
+                            'posted_at': datetime.now().isoformat()
                     })
             
             # Process found job cards
@@ -297,7 +297,7 @@ def scrape_single_company_career_page(company, career_url):
                             'description': f'Job at {company} - {title}',
                             'url': job_url,
                             'source': f'Career-{company}',
-                            'posted_date': datetime.now().isoformat()
+                            'posted_at': datetime.now().isoformat()
                         })
             
             # Method 4: Search for job keywords in page text and create jobs
@@ -313,7 +313,7 @@ def scrape_single_company_career_page(company, career_url):
                             'description': f'Career opportunity at {company} - {keyword}',
                             'url': career_url,
                             'source': f'Career-{company}',
-                            'posted_date': datetime.now().isoformat()
+                            'posted_at': datetime.now().isoformat()
                         })
                     break
         
@@ -357,7 +357,7 @@ def save_jobs_to_db(jobs):
                             description=job_data['description'],
                             url=job_data['url'],
                             source=job_data['source'],
-                            posted_date=datetime.fromisoformat(job_data['posted_date'])
+                            posted_at=datetime.fromisoformat(job_data['posted_at'])
                         )
                         db.session.add(job)
                         saved_count += 1

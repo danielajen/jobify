@@ -162,18 +162,8 @@ celery.conf.update(
 
 # Redis Configuration with production settings
 try:
-    # For Heroku Redis, we need to handle SSL certificates properly
-    import ssl
-    import urllib.parse
-    
-    # Parse the Redis URL to extract components
-    parsed = urllib.parse.urlparse(REDIS_URL)
-    
-    # Create SSL context that doesn't verify certificates
-    ssl_context = ssl.create_default_context()
-    ssl_context.check_hostname = False
-    ssl_context.verify_mode = ssl.CERT_NONE
-    
+    # For Heroku Redis, we'll use a simple connection without SSL verification
+    # The Redis URL already includes SSL configuration from Heroku
     redis_client = redis.from_url(
         REDIS_URL,
         decode_responses=True,
@@ -181,8 +171,7 @@ try:
         socket_timeout=5,
         retry_on_timeout=True,
         health_check_interval=30,
-        max_connections=20,
-        ssl=ssl_context
+        max_connections=20
     )
     # Test connection with timeout
     redis_client.ping()
@@ -190,6 +179,8 @@ try:
     print("Redis connected successfully")
 except Exception as e:
     print(f"Redis not available: {e}")
+    # For now, let's just mark Redis as unavailable and continue
+    # The app will work without Redis, just without caching
     REDIS_AVAILABLE = False
     redis_client = None
 

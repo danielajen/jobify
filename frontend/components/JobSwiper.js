@@ -56,12 +56,14 @@ const JobSwiper = ({ onSaveJob, onApplyJob }) => {
       }
 
       const data = await response.json();
+      console.log('API Response data:', typeof data, data);
 
       if (Array.isArray(data)) {
         setJobs(data);
         console.log(`Loaded ${data.length} jobs (hybrid mode - cached + background refresh)`);
       } else {
-        throw new Error('Invalid data format');
+        console.error('Invalid data format received:', data);
+        throw new Error('Invalid data format - expected array');
       }
 
     } catch (error) {
@@ -98,9 +100,13 @@ const JobSwiper = ({ onSaveJob, onApplyJob }) => {
 
       if (response.ok) {
         const data = await response.json();
+        console.log('Cached API Response data:', typeof data, data);
         if (Array.isArray(data)) {
           setJobs(data);
           console.log(`Loaded ${data.length} cached jobs only`);
+        } else {
+          console.error('Invalid cached data format received:', data);
+          setError('Invalid data format from server');
         }
       }
     } catch (error) {

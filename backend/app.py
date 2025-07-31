@@ -54,7 +54,7 @@ app.config['SESSION_REFRESH_EACH_REQUEST'] = True
 # SIMPLIFIED CORS TO ALLOW ALL ORIGINS
 CORS(app, 
      supports_credentials=True,
-     origins=['http://localhost:3000', 'http://192.168.2.18:3000', 'http://192.168.2.18:5050', 'http://192.168.2.18:*'],
+     origins=['*'],  # Allow all origins
      allow_headers=['Content-Type', 'Authorization', 'Cookie'],
      methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
      expose_headers=['Set-Cookie'])

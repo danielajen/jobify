@@ -26,12 +26,7 @@
       "package": "com.danielajenifuja.jobswipe",
       "versionCode": 1
     },
-    "web": {
-      "favicon": "./assets/favicon.png"
-    },
-    "plugins": [
-      "expo-build-properties"
-    ],
+    "plugins": [],
     "extra": {
       "eas": {
         "projectId": "your-project-id"

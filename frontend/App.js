@@ -8,7 +8,8 @@ import {
   Alert,
   StatusBar,
   SafeAreaView,
-  Dimensions
+  Dimensions,
+  ActivityIndicator
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { API_URL } from './config';
@@ -22,20 +23,31 @@ import ResourcesScreen from './components/ResourcesScreen';
 
 const { width, height } = Dimensions.get('window');
 
-export default function App() {
+function AppContent() {
   const [activeTab, setActiveTab] = useState('jobs');
   const [savedJobs, setSavedJobs] = useState([]);
   const [linkedInConnected, setLinkedInConnected] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   // Check LinkedIn connection status on app start and periodically
   useEffect(() => {
-    checkLinkedInStatus();
-    
+    const initializeApp = async () => {
+      try {
+        await checkLinkedInStatus();
+      } catch (error) {
+        console.log('App initialization error:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    initializeApp();
+
     // Check status every 3 seconds
     const interval = setInterval(() => {
       checkLinkedInStatus();
     }, 3000);
-    
+
     return () => clearInterval(interval);
   }, []);
 
@@ -46,6 +58,7 @@ export default function App() {
       setLinkedInConnected(data.linkedin_connected || false);
     } catch (error) {
       console.log('LinkedIn status check failed:', error);
+      // Don't block the app if LinkedIn check fails
     }
   };
 
@@ -69,6 +82,15 @@ export default function App() {
   };
 
   const renderTabContent = () => {
+    if (isLoading) {
+      return (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#667eea" />
+          <Text style={styles.loadingText}>Loading JobSwipe...</Text>
+        </View>
+      );
+    }
+
     switch (activeTab) {
       case 'jobs':
         return <JobSwiper onSaveJob={handleSaveJob} onApplyJob={handleApplyJob} />;
@@ -208,4 +230,24 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f8f9fa',
   },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f8f9fa',
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: '#667eea',
+    fontWeight: '600',
+  },
 });
+
+export default function App() {
+  return (
+    <UserProvider>
+      <AppContent />
+    </UserProvider>
+  );
+}

@@ -407,7 +407,7 @@ def get_jobs():
     """Get jobs with background refresh"""
     try:
         # 1. Return cached jobs immediately
-        jobs = Job.query.order_by(Job.posted_date.desc()).limit(100).all()
+        jobs = Job.query.order_by(Job.posted_at.desc()).limit(100).all()
         
         job_list = []
         for job in jobs:
@@ -419,7 +419,7 @@ def get_jobs():
                 'description': job.description,
                 'url': job.url,
                 'source': job.source,
-                'posted_date': job.posted_date.isoformat() if job.posted_date else None
+                'posted_date': job.posted_at.isoformat() if job.posted_at else None
             })
         
         # 2. If no jobs in database, run initial scraping immediately
@@ -430,7 +430,7 @@ def get_jobs():
                 initial_job_scraping()
                 
                 # Get jobs again after scraping
-                jobs = Job.query.order_by(Job.posted_date.desc()).limit(100).all()
+                jobs = Job.query.order_by(Job.posted_at.desc()).limit(100).all()
                 job_list = []
                 for job in jobs:
                     job_list.append({
@@ -441,7 +441,7 @@ def get_jobs():
                         'description': job.description,
                         'url': job.url,
                         'source': job.source,
-                        'posted_date': job.posted_date.isoformat() if job.posted_date else None
+                        'posted_date': job.posted_at.isoformat() if job.posted_at else None
                     })
                 logger.info(f"Initial scraping complete - {len(job_list)} jobs loaded")
                 
@@ -2582,7 +2582,7 @@ def get_cached_jobs():
     """Get jobs from cache/database immediately without triggering scraping"""
     try:
         # Get jobs from database (cached results)
-        jobs = Job.query.order_by(Job.posted_date.desc()).limit(100).all()
+        jobs = Job.query.order_by(Job.posted_at.desc()).limit(100).all()
         
         job_list = []
         for job in jobs:
@@ -2594,7 +2594,7 @@ def get_cached_jobs():
                 'description': job.description,
                 'url': job.url,
                 'source': job.source,
-                'posted_date': job.posted_date.isoformat() if job.posted_date else None
+                'posted_date': job.posted_at.isoformat() if job.posted_at else None
             })
         
         logger.info(f"Returning {len(job_list)} cached jobs")

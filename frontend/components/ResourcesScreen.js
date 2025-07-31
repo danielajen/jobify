@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  FlatList, 
-  Button, 
-  Linking, 
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  Button,
+  Linking,
   ActivityIndicator,
   RefreshControl
 } from 'react-native';
@@ -24,18 +24,37 @@ const ResourcesScreen = () => {
     try {
       setLoading(true);
       setError(null);
-      
-      const response = await fetch(`${API_URL}/resources`);
-      
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+      const response = await fetch(`${API_URL}/resources`, {
+        signal: controller.signal,
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+      });
+
+      clearTimeout(timeoutId);
+
       if (!response.ok) {
         throw new Error(`Server returned ${response.status} status`);
       }
-      
+
       const data = await response.json();
       setResources(data);
     } catch (err) {
       console.error('Fetch error:', err);
-      setError(`Failed to load resources: ${err.message || 'Unknown error'}`);
+
+      // Handle specific error types
+      if (err.name === 'AbortError') {
+        setError('Request timed out. Please check your internet connection.');
+      } else if (err.message.includes('JSON')) {
+        setError('Invalid response from server. Please try again.');
+      } else {
+        setError(`Failed to load resources: ${err.message || 'Unknown error'}`);
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -57,9 +76,9 @@ const ResourcesScreen = () => {
       <Text style={styles.itemDescription}>
         {item.description ? item.description.substring(0, 100) + '...' : 'No description'}
       </Text>
-      <Button 
-        title="View Repository" 
-        onPress={() => Linking.openURL(item.url)} 
+      <Button
+        title="View Repository"
+        onPress={() => Linking.openURL(item.url)}
         color="#0366d6"
       />
     </View>
@@ -68,9 +87,9 @@ const ResourcesScreen = () => {
   const renderPortalItem = ({ item }) => (
     <View style={styles.item}>
       <Text style={styles.itemTitle}>{item.name}</Text>
-      <Button 
-        title="Visit Portal" 
-        onPress={() => Linking.openURL(item.url)} 
+      <Button
+        title="Visit Portal"
+        onPress={() => Linking.openURL(item.url)}
         color="#28a745"
       />
     </View>
@@ -92,9 +111,9 @@ const ResourcesScreen = () => {
         <Text style={styles.helpText}>
           Make sure your backend is running at {API_URL}
         </Text>
-        <Button 
-          title="Retry" 
-          onPress={fetchResources} 
+        <Button
+          title="Retry"
+          onPress={fetchResources}
           style={styles.retryButton}
         />
       </View>
@@ -104,7 +123,7 @@ const ResourcesScreen = () => {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Job Search Resources</Text>
-      
+
       <Text style={styles.sectionTitle}>GitHub Repositories</Text>
       <FlatList
         data={resources.github_repos}
@@ -118,7 +137,7 @@ const ResourcesScreen = () => {
           />
         }
       />
-      
+
       <Text style={styles.sectionTitle}>Job Portals</Text>
       <FlatList
         data={resources.job_portals}

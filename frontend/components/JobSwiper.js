@@ -32,7 +32,18 @@ const JobSwiper = ({ onSaveJob, onApplyJob }) => {
       setLoading(true);
       setError(null);
 
-      const response = await fetch(`${API_URL}/jobs`);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+      const response = await fetch(`${API_URL}/jobs`, {
+        signal: controller.signal,
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+      });
+
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         throw new Error(`Server returned ${response.status} status`);
@@ -42,7 +53,15 @@ const JobSwiper = ({ onSaveJob, onApplyJob }) => {
       setJobs(data);
     } catch (err) {
       console.error('Fetch error:', err);
-      setError(`Failed to load jobs: ${err.message || 'Unknown error'}`);
+
+      // Handle specific error types
+      if (err.name === 'AbortError') {
+        setError('Request timed out. Please check your internet connection.');
+      } else if (err.message.includes('JSON')) {
+        setError('Invalid response from server. Please try again.');
+      } else {
+        setError(`Failed to load jobs: ${err.message || 'Unknown error'}`);
+      }
     } finally {
       setLoading(false);
     }

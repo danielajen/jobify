@@ -31,10 +31,14 @@ export const UserProvider = ({ children }) => {
     setError(null);
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000);
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // Reduced timeout
 
       const response = await fetch(`${API_URL}/profile?user_id=${userId}`, {
         signal: controller.signal,
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
       });
 
       clearTimeout(timeoutId);
@@ -50,7 +54,15 @@ export const UserProvider = ({ children }) => {
       }));
     } catch (err) {
       console.error('Error fetching profile:', err);
-      setError(`Network error: ${err.message}`);
+
+      // Handle specific error types
+      if (err.name === 'AbortError') {
+        setError('Request timed out. Please check your internet connection.');
+      } else if (err.message.includes('JSON')) {
+        setError('Invalid response from server. Please try again.');
+      } else {
+        setError(`Network error: ${err.message}`);
+      }
 
       // Simplified fallback user
       const fallbackUser = {

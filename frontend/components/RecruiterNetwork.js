@@ -122,7 +122,28 @@ const RecruiterNetwork = ({ linkedInConnected, onLinkedInConnect }) => {
 
   const checkLinkedInStatus = async () => {
     try {
-      const response = await fetch(`${API_URL}/auth/status`);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+      const response = await fetch(`${API_URL}/auth/status`, {
+        signal: controller.signal,
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`Server returned ${response.status} status`);
+      }
+
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        throw new Error('Server returned non-JSON response');
+      }
+
       const data = await response.json();
       if (data.linkedin_connected) {
         onLinkedInConnect();
@@ -133,6 +154,7 @@ const RecruiterNetwork = ({ linkedInConnected, onLinkedInConnect }) => {
       }
     } catch (error) {
       console.log('LinkedIn status check failed:', error);
+      // Don't block the app if LinkedIn check fails
     }
   };
 
@@ -446,8 +468,8 @@ const RecruiterNetwork = ({ linkedInConnected, onLinkedInConnect }) => {
         <View style={styles.metaItem}>
           <Ionicons name="people-outline" size={16} color="#666" />
           <Text style={styles.metaText}>
-            {item.mutual_connections > 0 
-              ? `${item.mutual_connections} mutual connections` 
+            {item.mutual_connections > 0
+              ? `${item.mutual_connections} mutual connections`
               : 'No mutual connections'
             }
           </Text>
@@ -583,13 +605,13 @@ const RecruiterNetwork = ({ linkedInConnected, onLinkedInConnect }) => {
                 <Text style={styles.loadingText}>{scrapingStatus}</Text>
               </View>
             )}
-            
+
             {!loading && scrapingStatus ? (
               <View style={styles.centerContainer}>
                 <Text style={styles.statusText}>{scrapingStatus}</Text>
               </View>
             ) : null}
-            
+
             {connections.length > 0 ? (
               <FlatList
                 data={connections}
@@ -602,7 +624,7 @@ const RecruiterNetwork = ({ linkedInConnected, onLinkedInConnect }) => {
                 <Ionicons name="people-outline" size={64} color="#ccc" />
                 <Text style={styles.emptyText}>No scraped profiles found</Text>
                 <Text style={styles.emptySubtext}>Use the search filters to find LinkedIn profiles</Text>
-                
+
                 <TouchableOpacity
                   style={[styles.connectButton, styles.scrapeButton]}
                   onPress={scrapeBigTechProfiles}
@@ -610,7 +632,7 @@ const RecruiterNetwork = ({ linkedInConnected, onLinkedInConnect }) => {
                   <Ionicons name="business" size={24} color="white" />
                   <Text style={styles.connectButtonText}>Scrape Google Employees</Text>
                 </TouchableOpacity>
-                
+
                 <TouchableOpacity
                   style={[styles.connectButton, styles.scrapeButton]}
                   onPress={scrapeTorontoProfessionals}

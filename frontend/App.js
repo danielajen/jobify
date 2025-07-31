@@ -53,12 +53,34 @@ function AppContent() {
 
   const checkLinkedInStatus = async () => {
     try {
-      const response = await fetch(`${API_URL}/auth/status`);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+      const response = await fetch(`${API_URL}/auth/status`, {
+        signal: controller.signal,
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`Server returned ${response.status} status`);
+      }
+
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        throw new Error('Server returned non-JSON response');
+      }
+
       const data = await response.json();
       setLinkedInConnected(data.linkedin_connected || false);
     } catch (error) {
       console.log('LinkedIn status check failed:', error);
       // Don't block the app if LinkedIn check fails
+      setLinkedInConnected(false);
     }
   };
 

@@ -76,10 +76,11 @@ def health_check():
     
     try:
         # Check Redis connection
-        import redis
-        r = redis.Redis(host='localhost', port=6379, db=0)
-        r.ping()
-        redis_status = 'connected'
+        if REDIS_AVAILABLE and redis_client:
+            redis_client.ping()
+            redis_status = 'connected'
+        else:
+            redis_status = 'not_available'
     except Exception as e:
         redis_status = f'error: {str(e)}'
     
@@ -113,11 +114,12 @@ AWS_REGION = os.getenv('AWS_REGION', 'us-east-1')
 # For now, keep local storage as fallback
 LOCAL_STORAGE_ENABLED = not CLOUD_STORAGE_ENABLED
 
-# Celery configuration
-app.config['CELERY_BROKER_URL'] = 'redis://localhost:6379/0'
-app.config['CELERY_RESULT_BACKEND'] = 'redis://localhost:6379/0'
+# Celery configuration - Use Heroku Redis URL if available, fallback to local
+REDIS_URL = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
+app.config['CELERY_BROKER_URL'] = REDIS_URL
+app.config['CELERY_RESULT_BACKEND'] = REDIS_URL
 
-# Initialize Celery
+# Initialize Celery with proper configuration
 celery = Celery(
     app.name,
     broker=app.config['CELERY_BROKER_URL'],
@@ -125,6 +127,16 @@ celery = Celery(
     include=['app']
 )
 celery.conf.update(app.config)
+
+# Configure Celery for Heroku
+celery.conf.update(
+    broker_connection_retry_on_startup=True,
+    task_serializer='json',
+    accept_content=['json'],
+    result_serializer='json',
+    timezone='UTC',
+    enable_utc=True,
+)
 
 # LinkedIn OpenID Connect Configuration - Standard Tier
 LINKEDIN_CLIENT_ID = os.environ.get('LINKEDIN_CLIENT_ID', '78410ucd7xak42')
@@ -178,8 +190,16 @@ SENDGRID_FROM_EMAIL = os.getenv('SENDGRID_FROM_EMAIL', 'danielajeni.11@gmail.com
 # Flask Secret Key
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'jobswipe-super-secret-key-2024-xyz123')
 
-# Redis Configuration
-redis_client = redis.Redis(host='localhost', port=6379, db=0)
+# Redis Configuration - Use Heroku Redis URL if available
+try:
+    redis_client = redis.from_url(REDIS_URL)
+    # Test connection
+    redis_client.ping()
+    REDIS_AVAILABLE = True
+except Exception as e:
+    logger.warning(f"Redis not available: {e}")
+    REDIS_AVAILABLE = False
+    redis_client = None
 
 # OAuth state storage - Primary method for cross-origin compatibility
 oauth_states = {}
@@ -195,8 +215,8 @@ def cleanup_expired_states():
     for state in expired_states:
         del oauth_states[state]
 
-# Celery Configuration
-celery_app = Celery('jobswipe', broker='redis://localhost:6379/0')
+# Celery Configuration - Use the main celery instance
+celery_app = celery
 
 # Production logging setup
 logging.basicConfig(
@@ -459,8 +479,24 @@ def handle_apply():
             db.session.commit()
         
         if job and user_profile:
-            apply_job_task.delay(job.url, user_id, job.id)
-            return jsonify({"status": "success", "message": "Application submitted successfully"})
+            # Try to queue the task with Celery, fallback to direct execution if Redis unavailable
+            try:
+                if REDIS_AVAILABLE:
+                    apply_job_task.delay(job.url, user_id, job.id)
+                    message = "Application submitted successfully (queued)"
+                else:
+                    # Fallback: execute task directly
+                    with app.app_context():
+                        apply_job_task(job.url, user_id, job.id)
+                    message = "Application submitted successfully (direct execution)"
+            except Exception as celery_error:
+                logger.warning(f"Celery task failed, executing directly: {celery_error}")
+                # Fallback: execute task directly
+                with app.app_context():
+                    apply_job_task(job.url, user_id, job.id)
+                message = "Application submitted successfully (fallback execution)"
+            
+            return jsonify({"status": "success", "message": message})
         
         return jsonify({"error": "Job or user not found"}), 404
     except Exception as e:
@@ -490,7 +526,19 @@ def handle_swipe():
             user_profile = UserProfile.query.filter_by(user_id=user_id).first()
             
             if job and user_profile and user_profile.auto_apply:
-                apply_job_task.delay(job.url, user_id, job.id)
+                # Try to queue the task with Celery, fallback to direct execution if Redis unavailable
+                try:
+                    if REDIS_AVAILABLE:
+                        apply_job_task.delay(job.url, user_id, job.id)
+                    else:
+                        # Fallback: execute task directly
+                        with app.app_context():
+                            apply_job_task(job.url, user_id, job.id)
+                except Exception as celery_error:
+                    logger.warning(f"Celery task failed, executing directly: {celery_error}")
+                    # Fallback: execute task directly
+                    with app.app_context():
+                        apply_job_task(job.url, user_id, job.id)
                 
         db.session.commit()
         return jsonify({"status": "success"})

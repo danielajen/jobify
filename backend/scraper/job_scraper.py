@@ -210,29 +210,41 @@ def scrape_github_jobs(url):
                         # Extract location
                         location = cols[2] if len(cols) > 2 else "Remote"
                         
-                        # Extract URL
+                        # Extract URL - improved parsing
                         url_col = cols[3] if len(cols) > 3 else ""
                         job_url = ""
+                        
+                        # Handle different URL formats
                         if '[' in url_col and '](' in url_col:
+                            # Markdown link format: [text](url)
                             job_url = url_col.split('](')[1].split(')')[0]
                         elif url_col.startswith('http'):
+                            # Direct URL
                             job_url = url_col
+                        elif 'http' in url_col:
+                            # URL somewhere in the text
+                            import re
+                            url_match = re.search(r'https?://[^\s)\]]+', url_col)
+                            if url_match:
+                                job_url = url_match.group(0)
                         
-                        # Create job object
-                        job = {
-                            'title': position,
-                            'company': company,
-                            'location': location,
-                            'url': job_url,
-                            'source': 'github',
-                            'description': '',
-                            'posted_at': datetime.utcnow(),
-                            'keywords': 'intern,2026'
-                        }
-                        
-                        # Only process intern positions
-                        if is_intern_position(job['title']):
-                            jobs.append(job)
+                        # Create job object only if we have required fields
+                        if position and company and job_url:
+                            job = {
+                                'title': position,
+                                'company': company,
+                                'location': location,
+                                'url': job_url,
+                                'source': 'github',
+                                'description': '',
+                                'posted_at': datetime.utcnow(),
+                                'keywords': 'intern,2026'
+                            }
+                            
+                            # Only process intern positions
+                            if is_intern_position(job['title']):
+                                jobs.append(job)
+                                print(f"Added GitHub job: {job['title']} at {job['company']}")
                             
                     except Exception as e:
                         print(f"Error parsing GitHub job row: {e}")
@@ -331,8 +343,8 @@ def scrape_builtin_jobs(url):
                         job['url'] = urljoin(url, url_elem['href'])
                         break
                 
-                # Only process intern positions
-                if is_intern_position(job['title']):
+                # Only process intern positions and ensure we have required fields
+                if is_intern_position(job['title']) and job['title'] != "Unknown Position" and job['company'] != "Unknown Company":
                     jobs.append(job)
                     print(f"Added BuiltIn job #{i+1}: {job['title']}")
                     
@@ -407,28 +419,40 @@ def scrape_glassdoor_jobs(url):
                     'keywords': 'intern,2026'
                 }
                 
-                # Extract title
-                title_elem = card.select_one('a[data-test="job-link"]')
-                if title_elem:
-                    job['title'] = title_elem.text.strip()
+                # Extract title with multiple selectors
+                title_selectors = ['a[data-test="job-link"]', 'h2', 'h3', '[class*="title"]', 'a']
+                for selector in title_selectors:
+                    title_elem = card.select_one(selector)
+                    if title_elem and title_elem.text.strip():
+                        job['title'] = title_elem.text.strip()
+                        break
                 
-                # Extract company name
-                company_elem = card.select_one('[data-test="employer-name"]')
-                if company_elem:
-                    job['company'] = company_elem.text.strip()
+                # Extract company name with multiple selectors
+                company_selectors = ['[data-test="employer-name"]', '[class*="company"]', '[class*="employer"]']
+                for selector in company_selectors:
+                    company_elem = card.select_one(selector)
+                    if company_elem and company_elem.text.strip():
+                        job['company'] = company_elem.text.strip()
+                        break
                 
-                # Extract location
-                location_elem = card.select_one('[data-test="location"]')
-                if location_elem:
-                    job['location'] = location_elem.text.strip()
+                # Extract location with multiple selectors
+                location_selectors = ['[data-test="location"]', '[class*="location"]']
+                for selector in location_selectors:
+                    location_elem = card.select_one(selector)
+                    if location_elem and location_elem.text.strip():
+                        job['location'] = location_elem.text.strip()
+                        break
                 
-                # Extract URL
-                url_elem = card.select_one('a[data-test="job-link"]')
-                if url_elem and url_elem.get('href'):
-                    job['url'] = urljoin(url, url_elem['href'])
+                # Extract URL with multiple selectors
+                url_selectors = ['a[data-test="job-link"]', 'a[href*="/job/"]', 'a']
+                for selector in url_selectors:
+                    url_elem = card.select_one(selector)
+                    if url_elem and url_elem.get('href'):
+                        job['url'] = urljoin(url, url_elem['href'])
+                        break
                 
-                # Only process intern positions
-                if is_intern_position(job['title']):
+                # Only process intern positions and ensure we have required fields
+                if is_intern_position(job['title']) and job['title'] != "Unknown Position" and job['company'] != "Unknown Company":
                     jobs.append(job)
                     print(f"Added Glassdoor job #{i+1}: {job['title']}")
                     
@@ -492,28 +516,40 @@ def scrape_indeed_jobs(url):
                     'keywords': 'intern,2026'
                 }
                 
-                # Extract title
-                title_elem = card.select_one('h2 a')
-                if title_elem:
-                    job['title'] = title_elem.text.strip()
+                # Extract title with multiple selectors
+                title_selectors = ['h2 a', 'h3 a', '[class*="title"]', 'a']
+                for selector in title_selectors:
+                    title_elem = card.select_one(selector)
+                    if title_elem and title_elem.text.strip():
+                        job['title'] = title_elem.text.strip()
+                        break
                 
-                # Extract company name
-                company_elem = card.select_one('[data-testid="company-name"]')
-                if company_elem:
-                    job['company'] = company_elem.text.strip()
+                # Extract company name with multiple selectors
+                company_selectors = ['[data-testid="company-name"]', '[class*="company"]']
+                for selector in company_selectors:
+                    company_elem = card.select_one(selector)
+                    if company_elem and company_elem.text.strip():
+                        job['company'] = company_elem.text.strip()
+                        break
                 
-                # Extract location
-                location_elem = card.select_one('[data-testid="location"]')
-                if location_elem:
-                    job['location'] = location_elem.text.strip()
+                # Extract location with multiple selectors
+                location_selectors = ['[data-testid="location"]', '[class*="location"]']
+                for selector in location_selectors:
+                    location_elem = card.select_one(selector)
+                    if location_elem and location_elem.text.strip():
+                        job['location'] = location_elem.text.strip()
+                        break
                 
-                # Extract URL
-                url_elem = card.select_one('h2 a')
-                if url_elem and url_elem.get('href'):
-                    job['url'] = urljoin(url, url_elem['href'])
+                # Extract URL with multiple selectors
+                url_selectors = ['h2 a', 'h3 a', 'a[href*="/job/"]', 'a']
+                for selector in url_selectors:
+                    url_elem = card.select_one(selector)
+                    if url_elem and url_elem.get('href'):
+                        job['url'] = urljoin(url, url_elem['href'])
+                        break
                 
-                # Only process intern positions
-                if is_intern_position(job['title']):
+                # Only process intern positions and ensure we have required fields
+                if is_intern_position(job['title']) and job['title'] != "Unknown Position" and job['company'] != "Unknown Company":
                     jobs.append(job)
                     print(f"Added Indeed job #{i+1}: {job['title']}")
                     
@@ -669,9 +705,14 @@ def save_jobs_to_db(jobs):
             total_processed += 1
             
             # Skip jobs with missing required fields
-            if not job_data.get('title') or not job_data.get('company') or not job_data.get('url'):
-                print(f"Skipping job {total_processed}: Missing required fields")
+            if not job_data.get('title') or not job_data.get('company'):
+                print(f"Skipping job {total_processed}: Missing title or company")
                 continue
+            
+            # Generate a URL if missing (for GitHub jobs that might not have direct URLs)
+            if not job_data.get('url'):
+                job_data['url'] = f"https://github.com/jobs/{job_data['company'].lower().replace(' ', '-')}-{job_data['title'].lower().replace(' ', '-')}"
+                print(f"Generated URL for job {total_processed}: {job_data['url']}")
             
             # Check if job already exists by URL
             existing = Job.query.filter_by(url=job_data['url']).first()
@@ -691,7 +732,7 @@ def save_jobs_to_db(jobs):
                     source=job_data.get('source', 'general')
                 )
                 db.session.add(job)
-                new_count +=1
+                new_count += 1
                 print(f"Added job {new_count}: {job_data['title']} at {job_data['company']}")
                 
             except Exception as e:

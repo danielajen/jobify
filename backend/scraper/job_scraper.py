@@ -3,14 +3,13 @@ import os
 # Add parent directory to Python path to resolve config import
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-# REMOVE SELENIUM AND JOBSPY - Use lightweight HTTP requests only
 import requests
 from bs4 import BeautifulSoup
 from datetime import datetime
 import re
 from config import config
 from database.models import db, Job
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 import time
 import random
 import json
@@ -18,16 +17,11 @@ import json
 # Enhanced headers to mimic a real browser
 HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
     'Accept-Language': 'en-US,en;q=0.9',
     'Accept-Encoding': 'gzip, deflate, br',
     'Connection': 'keep-alive',
-    'Upgrade-Insecure-Requests': '1',
-    'Sec-Fetch-Dest': 'document',
-    'Sec-Fetch-Mode': 'navigate',
-    'Sec-Fetch-Site': 'none',
-    'Sec-Fetch-User': '?1',
-    'Cache-Control': 'max-age=0'
+    'Upgrade-Insecure-Requests': '1'
 }
 
 def make_lightweight_request(url, timeout=10):
@@ -41,100 +35,123 @@ def make_lightweight_request(url, timeout=10):
         return None
 
 def scrape_target_jobs():
-    """Ultra-lightweight job scraping using only HTTP requests"""
-    print("Starting ultra-lightweight job scraping...")
+    """Scrape jobs from sources for general swiping (NOT career pages)"""
+    print("Starting general job scraping for swiping...")
     jobs = []
     
     try:
-        # Lightweight GitHub jobs scraping
-        print("Scraping GitHub jobs...")
-        github_jobs = scrape_github_jobs_lightweight()
+        # 1. Scrape from GitHub internships markdown
+        print("Scraping GitHub internships...")
+        github_jobs = scrape_github_internships()
         jobs.extend(github_jobs)
         
-        # Lightweight Indeed jobs scraping (using API)
-        print("Scraping Indeed jobs...")
-        indeed_jobs = scrape_indeed_jobs_lightweight()
-        jobs.extend(indeed_jobs)
+        # 2. Scrape from Glassdoor
+        print("Scraping Glassdoor...")
+        glassdoor_jobs = scrape_glassdoor_jobs()
+        jobs.extend(glassdoor_jobs)
         
-        # Lightweight LinkedIn jobs scraping (using API)
-        print("Scraping LinkedIn jobs...")
-        linkedin_jobs = scrape_linkedin_jobs_lightweight()
-        jobs.extend(linkedin_jobs)
+        # 3. Scrape from BuiltIn (removed Indeed - not working)
+        print("Scraping BuiltIn...")
+        builtin_jobs = scrape_builtin_jobs()
+        jobs.extend(builtin_jobs)
         
-        print(f"Total jobs scraped: {len(jobs)}")
+        print(f"Total jobs scraped from sources for swiping: {len(jobs)}")
         return jobs
         
     except Exception as e:
-        print(f"Error in ultra-lightweight job scraping: {e}")
+        print(f"Error in target job scraping: {e}")
         return []
 
-def scrape_github_jobs_lightweight():
-    """Lightweight GitHub jobs scraping using HTTP requests"""
+def scrape_favorite_companies_jobs():
+    """Scrape jobs specifically from favorite company career pages"""
+    print("Starting favorite companies career page scraping...")
     jobs = []
+    companies_scraped = 0
+    
     try:
-        # GitHub Jobs API (deprecated but still works for some data)
-        url = "https://jobs.github.com/positions.json?description=intern&location=United+States"
-        response = make_lightweight_request(url)
+        # Get all favorite companies with career pages
+        favorite_companies = config.FAVORITE_COMPANIES
         
-        if response:
-            data = response.json()
-            for job in data[:30]:  # Limit to 30 jobs
-                if is_intern_position(job.get('title', '')):
-                    jobs.append({
-                        'title': job.get('title', ''),
-                        'company': job.get('company', ''),
-                        'location': job.get('location', ''),
-                        'description': job.get('description', ''),
-                        'url': job.get('url', ''),
-                        'source': 'GitHub',
-                        'posted_date': job.get('created_at', datetime.now().isoformat())
-                    })
+        for company in favorite_companies:
+            try:
+                if company in config.COMPANY_CAREER_PAGES:
+                    career_url = config.COMPANY_CAREER_PAGES[company]
+                    if career_url:  # Skip empty URLs
+                        print(f"Scraping career page for: {company}")
+                        company_jobs = scrape_single_company_career_page(company, career_url)
+                        jobs.extend(company_jobs)
+                        companies_scraped += 1
+                        
+                        # Small delay to prevent overwhelming servers
+                        time.sleep(0.5)
+                        
+                        # Memory optimization: process in batches
+                        if len(jobs) > 200:  # Allow more jobs for favorite companies
+                            print(f"Memory optimization: processed {companies_scraped} companies, {len(jobs)} jobs")
+                            break
+                
+            except Exception as e:
+                print(f"Error scraping {company}: {e}")
+                continue
         
-        print(f"Scraped {len(jobs)} GitHub jobs")
+        print(f"Scraped {len(jobs)} jobs from {companies_scraped} favorite company career pages")
         return jobs
         
     except Exception as e:
-        print(f"Error scraping GitHub jobs: {e}")
+        print(f"Error in favorite companies career page scraping: {e}")
         return []
 
-def scrape_indeed_jobs_lightweight():
-    """Lightweight Indeed jobs scraping using HTTP requests"""
+def scrape_github_internships():
+    """Scrape from GitHub internships markdown"""
     jobs = []
     try:
-        # Use Indeed's RSS feed for lightweight scraping
-        url = "https://www.indeed.com/rss?q=intern&l=United+States"
+        url = config.SOURCES["github"]
         response = make_lightweight_request(url)
         
         if response:
-            soup = BeautifulSoup(response.content, 'xml')
-            items = soup.find_all('item')
+            content = response.text
+            # Parse markdown content for company names and links
+            lines = content.split('\n')
+            current_company = None
             
-            for item in items[:30]:  # Limit to 30 jobs
-                title = item.find('title')
-                if title and is_intern_position(title.text):
-                    jobs.append({
-                        'title': title.text,
-                        'company': 'Various Companies',  # RSS doesn't always have company
-                        'location': 'United States',
-                        'description': item.find('description').text if item.find('description') else '',
-                        'url': item.find('link').text if item.find('link') else '',
-                        'source': 'Indeed',
-                        'posted_date': item.find('pubDate').text if item.find('pubDate') else datetime.now().isoformat()
-                    })
+            for line in lines:
+                # Look for company headers
+                if line.startswith('## ') and '|' in line:
+                    company_match = re.search(r'\|\s*\[([^\]]+)\]', line)
+                    if company_match:
+                        current_company = company_match.group(1).strip()
+                
+                # Look for job links
+                elif line.startswith('- ') and '[' in line and '](' in line:
+                    if current_company:
+                        link_match = re.search(r'\[([^\]]+)\]\(([^)]+)\)', line)
+                        if link_match:
+                            title = link_match.group(1).strip()
+                            url = link_match.group(2).strip()
+                            
+                            if is_intern_position(title):
+                                jobs.append({
+                                    'title': title,
+                                    'company': current_company,
+                                    'location': 'United States',
+                                    'description': '',
+                                    'url': url,
+                                    'source': 'GitHub-Internships',
+                                    'posted_date': datetime.now().isoformat()
+                                })
         
-        print(f"Scraped {len(jobs)} Indeed jobs")
+        print(f"Scraped {len(jobs)} GitHub internships")
         return jobs
         
     except Exception as e:
-        print(f"Error scraping Indeed jobs: {e}")
+        print(f"Error scraping GitHub internships: {e}")
         return []
 
-def scrape_linkedin_jobs_lightweight():
-    """Lightweight LinkedIn jobs scraping using HTTP requests"""
+def scrape_glassdoor_jobs():
+    """Scrape from Glassdoor"""
     jobs = []
     try:
-        # Use LinkedIn's job search page (basic scraping)
-        url = "https://www.linkedin.com/jobs/search/?keywords=intern&location=United%20States"
+        url = config.SOURCES["glassdoor"]
         response = make_lightweight_request(url)
         
         if response:
@@ -149,59 +166,123 @@ def scrape_linkedin_jobs_lightweight():
                 if title_elem and is_intern_position(title_elem.text.strip()):
                     jobs.append({
                         'title': title_elem.text.strip(),
-                        'company': company_elem.text.strip() if company_elem else 'Unknown Company',
+                        'company': company_elem.text.strip() if company_elem else 'Unknown',
                         'location': location_elem.text.strip() if location_elem else 'United States',
                         'description': '',
-                        'url': f"https://www.linkedin.com{card.find('a')['href']}" if card.find('a') else '',
-                        'source': 'LinkedIn',
+                        'url': f"https://www.glassdoor.com{card.find('a')['href']}" if card.find('a') else '',
+                        'source': 'Glassdoor',
                         'posted_date': datetime.now().isoformat()
                     })
         
-        print(f"Scraped {len(jobs)} LinkedIn jobs")
+        print(f"Scraped {len(jobs)} Glassdoor jobs")
         return jobs
         
     except Exception as e:
-        print(f"Error scraping LinkedIn jobs: {e}")
+        print(f"Error scraping Glassdoor: {e}")
         return []
 
-def scrape_company_jobs(company):
-    """Lightweight company-specific job scraping"""
+def scrape_builtin_jobs():
+    """Scrape from BuiltIn"""
     jobs = []
     try:
-        # Simple company job search using HTTP requests
-        search_url = f"https://www.linkedin.com/jobs/search/?keywords={company}%20intern&location=United%20States"
-        response = make_lightweight_request(search_url)
+        url = config.SOURCES["builtin"]
+        response = make_lightweight_request(url)
         
         if response:
             soup = BeautifulSoup(response.content, 'html.parser')
-            job_cards = soup.find_all('div', class_='job-search-card')
+            job_cards = soup.find_all('div', class_='job-card')
             
-            for card in job_cards[:20]:  # Limit to 20 jobs
-                title_elem = card.find('h3', class_='job-search-card__title')
-                company_elem = card.find('h4', class_='job-search-card__subtitle')
-                location_elem = card.find('span', class_='job-search-card__location')
+            for card in job_cards[:30]:  # Limit to 30 jobs
+                title_elem = card.find('h3', class_='job-title')
+                company_elem = card.find('div', class_='company-name')
+                location_elem = card.find('div', class_='location')
                 
                 if title_elem and is_intern_position(title_elem.text.strip()):
                     jobs.append({
                         'title': title_elem.text.strip(),
-                        'company': company_elem.text.strip() if company_elem else company,
+                        'company': company_elem.text.strip() if company_elem else 'Unknown',
                         'location': location_elem.text.strip() if location_elem else 'United States',
                         'description': '',
-                        'url': f"https://www.linkedin.com{card.find('a')['href']}" if card.find('a') else '',
-                        'source': f'LinkedIn-{company}',
+                        'url': f"https://builtintoronto.com{card.find('a')['href']}" if card.find('a') else '',
+                        'source': 'BuiltIn',
                         'posted_date': datetime.now().isoformat()
                     })
         
-        print(f"Scraped {len(jobs)} jobs for {company}")
+        print(f"Scraped {len(jobs)} BuiltIn jobs")
         return jobs
         
     except Exception as e:
-        print(f"Error scraping company jobs for {company}: {e}")
+        print(f"Error scraping BuiltIn: {e}")
+        return []
+
+def scrape_single_company_career_page(company, career_url):
+    """Scrape jobs from a single company career page"""
+    jobs = []
+    try:
+        response = make_lightweight_request(career_url, timeout=15)
+        
+        if response:
+            soup = BeautifulSoup(response.content, 'html.parser')
+            
+            # Common job card selectors for career pages
+            job_selectors = [
+                '.job-card', '.job-listing', '.career-opportunity',
+                '.position', '.job-item', '.career-item',
+                '[class*="job"]', '[class*="career"]', '[class*="position"]'
+            ]
+            
+            job_cards = []
+            for selector in job_selectors:
+                job_cards = soup.select(selector)
+                if job_cards:
+                    break
+            
+            # If no job cards found, look for job links
+            if not job_cards:
+                job_links = soup.find_all('a', href=re.compile(r'job|career|position|intern', re.I))
+                for link in job_links[:10]:  # Limit to 10 jobs per company
+                    title = link.get_text(strip=True)
+                    if title and is_intern_position(title):
+                        jobs.append({
+                            'title': title,
+                            'company': company,
+                            'location': 'United States',
+                            'description': '',
+                            'url': urljoin(career_url, link.get('href', '')),
+                            'source': f'Career-{company}',
+                            'posted_date': datetime.now().isoformat()
+                        })
+            else:
+                # Process job cards
+                for card in job_cards[:10]:  # Limit to 10 jobs per company
+                    title_elem = card.find(['h1', 'h2', 'h3', 'h4', 'h5', 'h6']) or card.find(['span', 'div'], class_=re.compile(r'title|name', re.I))
+                    
+                    if title_elem:
+                        title = title_elem.get_text(strip=True)
+                        if title and is_intern_position(title):
+                            # Try to find job URL
+                            job_link = card.find('a') or title_elem.find('a')
+                            job_url = urljoin(career_url, job_link.get('href', '')) if job_link else career_url
+                            
+                            jobs.append({
+                                'title': title,
+                                'company': company,
+                                'location': 'United States',
+                                'description': '',
+                                'url': job_url,
+                                'source': f'Career-{company}',
+                                'posted_date': datetime.now().isoformat()
+                            })
+        
+        return jobs
+        
+    except Exception as e:
+        print(f"Error scraping {company} career page: {e}")
         return []
 
 def is_intern_position(title):
     """Check if job title indicates an intern position"""
-    intern_keywords = ['intern', 'internship', 'co-op', 'coop', 'student']
+    intern_keywords = ['intern', 'internship', 'co-op', 'coop', 'student', 'new grad', 'entry level']
     title_lower = title.lower()
     return any(keyword in title_lower for keyword in intern_keywords)
 
@@ -243,7 +324,6 @@ def save_jobs_to_db(jobs):
             
             # Commit batch to reduce memory usage
             db.session.commit()
-            print(f"Saved batch of {len(batch)} jobs")
             
             # Small delay to prevent overwhelming the database
             time.sleep(0.1)

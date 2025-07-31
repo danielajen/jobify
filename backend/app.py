@@ -229,18 +229,18 @@ def initial_job_scraping():
     with app.app_context():
         logger.info("Running initial job scraping on app startup...")
         try:
-            # Quick scrape of general job boards only (faster)
+            # 1. Scrape from sources for general swiping (GitHub, Glassdoor, BuiltIn)
+            logger.info("Scraping from job sources for swiping...")
             jobs = scrape_target_jobs()
             saved_count = save_jobs_to_db(jobs)
             
-            # Only scrape top 5 favorite companies initially (faster startup)
-            top_companies = Config.FAVORITE_COMPANIES[:5]
-            for company in top_companies:
-                logger.debug(f"Scraping jobs for {company}")
-                company_jobs = scrape_company_jobs(company)
-                save_jobs_to_db(company_jobs)
+            # 2. Scrape from favorite company career pages
+            logger.info("Scraping from favorite company career pages...")
+            from scraper.job_scraper import scrape_favorite_companies_jobs
+            career_jobs = scrape_favorite_companies_jobs()
+            career_saved_count = save_jobs_to_db(career_jobs)
                 
-            logger.info(f"Initial scraping: {len(jobs)} jobs scraped, {saved_count} saved")
+            logger.info(f"Initial scraping: {len(jobs)} swipe jobs, {len(career_jobs)} favorite company jobs, {saved_count + career_saved_count} total saved")
         except Exception as e:
             logger.error(f"Initial job scraping error: {str(e)}")
 
@@ -250,17 +250,18 @@ def scheduled_job_scraping():
     with app.app_context():
         logger.info("Running scheduled job scraping...")
         try:
-            # Scrape jobs from general job boards
+            # 1. Scrape from sources for general swiping (GitHub, Glassdoor, BuiltIn)
+            logger.info("Scraping from job sources for swiping...")
             jobs = scrape_target_jobs()
             saved_count = save_jobs_to_db(jobs)
             
-            # Scrape jobs from favorite companies
-            for company in Config.FAVORITE_COMPANIES:
-                logger.debug(f"Scraping jobs for {company}")
-                company_jobs = scrape_company_jobs(company)
-                save_jobs_to_db(company_jobs)
+            # 2. Scrape from favorite company career pages
+            logger.info("Scraping from favorite company career pages...")
+            from scraper.job_scraper import scrape_favorite_companies_jobs
+            career_jobs = scrape_favorite_companies_jobs()
+            career_saved_count = save_jobs_to_db(career_jobs)
                 
-            logger.info(f"Scraped {len(jobs)} jobs, saved {saved_count} new jobs")
+            logger.info(f"Scheduled scraping: {len(jobs)} swipe jobs, {len(career_jobs)} favorite company jobs, {saved_count + career_saved_count} total saved")
         except Exception as e:
             logger.error(f"Job scraping error: {str(e)}")
 

@@ -174,9 +174,9 @@ try:
     # Test connection with timeout
     redis_client.ping()
     REDIS_AVAILABLE = True
-    logger.info("Redis connected successfully")
+    print("Redis connected successfully")
 except Exception as e:
-    logger.warning(f"Redis not available: {e}")
+    print(f"Redis not available: {e}")
     REDIS_AVAILABLE = False
     redis_client = None
 

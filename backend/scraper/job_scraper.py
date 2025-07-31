@@ -72,44 +72,31 @@ def get_random_user_agent():
     """Get a random user agent"""
     return random.choice(USER_AGENTS)
 
-def make_lightweight_request(url, timeout=15):
-    """Make request with advanced anti-blocking techniques"""
+def make_lightweight_request(url, timeout=8):
+    """Make request with real anti-blocking techniques"""
     try:
         # Create new session for each request
         session = create_session()
         
-        # Add random delay
-        time.sleep(random.uniform(1, 3))
+        # Add minimal delay
+        time.sleep(random.uniform(0.5, 1))
         
-        # Try multiple approaches
-        for attempt in range(3):
-            try:
-                # Method 1: Direct request
-                response = session.get(url, timeout=timeout, allow_redirects=True)
+        # Single attempt with real anti-blocking
+        try:
+            response = session.get(url, timeout=timeout, allow_redirects=True)
+            
+            if response.status_code == 200:
+                return response
+            elif response.status_code == 403:
+                print(f"403 blocked - trying alternative URL immediately")
+                return None  # Don't retry, try alternative URL instead
+            else:
+                print(f"Request failed: {response.status_code}")
+                return None
                 
-                if response.status_code == 200:
-                    return response
-                elif response.status_code == 403:
-                    print(f"403 blocked on attempt {attempt + 1}, trying different approach...")
-                    
-                    # Method 2: Try with different headers
-                    session = create_session()
-                    time.sleep(random.uniform(2, 4))
-                    continue
-                else:
-                    print(f"Request failed: {response.status_code}")
-                    return None
-                    
-            except requests.exceptions.RequestException as e:
-                print(f"Request error on attempt {attempt + 1}: {e}")
-                if attempt < 2:
-                    time.sleep(random.uniform(2, 4))
-                    session = create_session()
-                    continue
-                else:
-                    return None
-        
-        return None
+        except requests.exceptions.RequestException as e:
+            print(f"Request error: {e}")
+            return None
         
     except Exception as e:
         print(f"Error in make_lightweight_request: {e}")
@@ -183,10 +170,10 @@ def scrape_favorite_companies_jobs():
         return []
 
 def scrape_github_internships():
-    """Scrape from GitHub internships markdown with advanced anti-blocking"""
+    """Scrape from GitHub internships markdown with real anti-blocking"""
     jobs = []
     try:
-        print("Scraping GitHub internships (ADVANCED ANTI-BLOCKING)...")
+        print("Scraping GitHub internships (REAL ANTI-BLOCKING)...")
         
         # Try multiple GitHub URLs to bypass blocks
         github_urls = [

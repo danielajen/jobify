@@ -127,10 +127,15 @@ celery = Celery(
 celery.conf.update(app.config)
 
 # LinkedIn OpenID Connect Configuration - Standard Tier
-LINKEDIN_CLIENT_ID = '78410ucd7xak42'  # Your correct app ID
-LINKEDIN_CLIENT_SECRET = 'WPL_AP1.UXNA3HdvDRzqx702.2tvvkg=='  # Your app secret
-# Use the network IP instead of localhost for mobile testing
-LINKEDIN_REDIRECT_URI = 'http://192.168.2.18:5050/linkedin/callback'
+LINKEDIN_CLIENT_ID = os.environ.get('LINKEDIN_CLIENT_ID', '78410ucd7xak42')
+LINKEDIN_CLIENT_SECRET = os.environ.get('LINKEDIN_CLIENT_SECRET', 'WPL_AP1.UXNA3HdvDRzqx702.2tvvkg==')
+
+# Use Heroku URL in production, local URL in development
+if os.environ.get('DATABASE_URL'):  # Heroku environment
+    LINKEDIN_REDIRECT_URI = os.environ.get('LINKEDIN_REDIRECT_URI', 'https://your-app-name.herokuapp.com/linkedin/callback')
+else:  # Local development
+    LINKEDIN_REDIRECT_URI = os.environ.get('LINKEDIN_REDIRECT_URI', 'http://192.168.2.18:5050/linkedin/callback')
+
 # Member (3-legged) scopes for real connections and search
 LINKEDIN_SCOPE = 'openid profile email r_liteprofile r_emailaddress r_organization_social w_member_social'
 

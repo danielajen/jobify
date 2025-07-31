@@ -169,7 +169,9 @@ try:
         socket_timeout=5,
         retry_on_timeout=True,
         health_check_interval=30,
-        max_connections=20
+        max_connections=20,
+        ssl=True,
+        ssl_cert_reqs=None  # Disable SSL certificate verification for Heroku Redis
     )
     # Test connection with timeout
     redis_client.ping()

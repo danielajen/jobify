@@ -4,7 +4,7 @@ from flask_cors import CORS
 from apscheduler.schedulers.background import BackgroundScheduler
 from database.db import db, init_db
 from database.models import Job, Swipe, FavoriteCompany, Recruiter, UserProfile, Resume, ApplicationError, User, LinkedInConnection, OutreachHistory
-from scraper.job_scraper import scrape_target_jobs, save_jobs_to_db, scrape_company_jobs
+from scraper.job_scraper import scrape_target_jobs, save_jobs_to_db
 from config import Config
 import os
 import json

@@ -35,27 +35,27 @@ def make_lightweight_request(url, timeout=10):
         return None
 
 def scrape_target_jobs():
-    """Scrape jobs from sources for general swiping (NOT career pages)"""
-    print("Starting general job scraping for swiping...")
+    """Scrape jobs from sources for general swiping (NOT career pages) - OPTIMIZED"""
+    print("Starting general job scraping for swiping (OPTIMIZED)...")
     jobs = []
     
     try:
-        # 1. Scrape from GitHub internships markdown
-        print("Scraping GitHub internships...")
+        # 1. Scrape from GitHub internships markdown - LIMIT to 20 jobs
+        print("Scraping GitHub internships (LIMITED)...")
         github_jobs = scrape_github_internships()
-        jobs.extend(github_jobs)
+        jobs.extend(github_jobs[:20])  # Limit to 20
         
-        # 2. Scrape from Glassdoor
-        print("Scraping Glassdoor...")
+        # 2. Scrape from Glassdoor - LIMIT to 15 jobs
+        print("Scraping Glassdoor (LIMITED)...")
         glassdoor_jobs = scrape_glassdoor_jobs()
-        jobs.extend(glassdoor_jobs)
+        jobs.extend(glassdoor_jobs[:15])  # Limit to 15
         
-        # 3. Scrape from BuiltIn (removed Indeed - not working)
-        print("Scraping BuiltIn...")
+        # 3. Scrape from BuiltIn - LIMIT to 15 jobs
+        print("Scraping BuiltIn (LIMITED)...")
         builtin_jobs = scrape_builtin_jobs()
-        jobs.extend(builtin_jobs)
+        jobs.extend(builtin_jobs[:15])  # Limit to 15
         
-        print(f"Total jobs scraped from sources for swiping: {len(jobs)}")
+        print(f"Total jobs scraped from sources for swiping (OPTIMIZED): {len(jobs)}")
         return jobs
         
     except Exception as e:
@@ -63,14 +63,14 @@ def scrape_target_jobs():
         return []
 
 def scrape_favorite_companies_jobs():
-    """Scrape jobs specifically from favorite company career pages"""
-    print("Starting favorite companies career page scraping...")
+    """Scrape jobs specifically from favorite company career pages - OPTIMIZED for memory"""
+    print("Starting favorite companies career page scraping (OPTIMIZED)...")
     jobs = []
     companies_scraped = 0
     
     try:
-        # Get all favorite companies with career pages
-        favorite_companies = config.FAVORITE_COMPANIES
+        # OPTIMIZATION: Limit to top 20 companies to prevent memory/timeout issues
+        favorite_companies = config.FAVORITE_COMPANIES[:20]
         
         for company in favorite_companies:
             try:
@@ -83,10 +83,10 @@ def scrape_favorite_companies_jobs():
                         companies_scraped += 1
                         
                         # Small delay to prevent overwhelming servers
-                        time.sleep(0.5)
+                        time.sleep(0.3)  # Reduced delay
                         
-                        # Memory optimization: process in batches
-                        if len(jobs) > 200:  # Allow more jobs for favorite companies
+                        # MEMORY OPTIMIZATION: Stop after 15 companies or 100 jobs
+                        if companies_scraped >= 15 or len(jobs) >= 100:
                             print(f"Memory optimization: processed {companies_scraped} companies, {len(jobs)} jobs")
                             break
                 
@@ -94,7 +94,7 @@ def scrape_favorite_companies_jobs():
                 print(f"Error scraping {company}: {e}")
                 continue
         
-        print(f"Scraped {len(jobs)} jobs from {companies_scraped} favorite company career pages")
+        print(f"Scraped {len(jobs)} jobs from {companies_scraped} favorite company career pages (OPTIMIZED)")
         return jobs
         
     except Exception as e:

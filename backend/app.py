@@ -404,16 +404,39 @@ def get_linked_companies_jobs():
 
 @app.route('/api/jobs', methods=['GET', 'OPTIONS'])
 def get_jobs():
-    if request.method == 'OPTIONS':
-        return '', 200
-        
+    """Get jobs with background refresh"""
     try:
-        # Optimized: Limit to 50 jobs and add caching
-        jobs = Job.query.order_by(Job.posted_at.desc()).limit(50).all()
-        return jsonify([job.to_dict() for job in jobs])
+        # 1. Return cached jobs immediately
+        jobs = Job.query.filter_by(is_active=True).order_by(Job.posted_date.desc()).limit(100).all()
+        
+        job_list = []
+        for job in jobs:
+            job_list.append({
+                'id': job.id,
+                'title': job.title,
+                'company': job.company,
+                'location': job.location,
+                'description': job.description,
+                'url': job.url,
+                'source': job.source,
+                'posted_date': job.posted_date.isoformat() if job.posted_date else None
+            })
+        
+        # 2. Trigger background job refresh if Redis is available
+        if REDIS_AVAILABLE:
+            try:
+                # Queue background job refresh
+                celery.send_task('app.refresh_jobs_background')
+                logger.info("Queued background job refresh")
+            except Exception as e:
+                logger.error(f"Failed to queue background refresh: {str(e)}")
+        
+        logger.info(f"Returning {len(job_list)} jobs with background refresh")
+        return jsonify(job_list)
+        
     except Exception as e:
-        logger.error(f"Jobs error: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+        logger.error(f"Error getting jobs: {str(e)}")
+        return jsonify([])
 
 @app.route('/api/fav-jobs', methods=['GET', 'OPTIONS'])
 def get_favorite_jobs():
@@ -2526,6 +2549,58 @@ SENDGRID_FROM_EMAIL = os.getenv('SENDGRID_FROM_EMAIL', 'danielajeni.11@gmail.com
 
 # Flask Secret Key
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'jobswipe-super-secret-key-2024-xyz123')
+
+# Add new endpoint for cached jobs
+@app.route('/api/jobs/cached', methods=['GET'])
+def get_cached_jobs():
+    """Get jobs from cache/database immediately without triggering scraping"""
+    try:
+        # Get jobs from database (cached results)
+        jobs = Job.query.filter_by(is_active=True).order_by(Job.posted_date.desc()).limit(100).all()
+        
+        job_list = []
+        for job in jobs:
+            job_list.append({
+                'id': job.id,
+                'title': job.title,
+                'company': job.company,
+                'location': job.location,
+                'description': job.description,
+                'url': job.url,
+                'source': job.source,
+                'posted_date': job.posted_date.isoformat() if job.posted_date else None
+            })
+        
+        logger.info(f"Returning {len(job_list)} cached jobs")
+        return jsonify(job_list)
+        
+    except Exception as e:
+        logger.error(f"Error getting cached jobs: {str(e)}")
+        return jsonify([])
+
+# Add Celery task for background job refresh
+@celery.task(name='app.refresh_jobs_background')
+def refresh_jobs_background():
+    """Background task to refresh jobs without blocking the frontend"""
+    with app.app_context():
+        try:
+            logger.info("Starting background job refresh...")
+            
+            # 1. Quick scrape from sources (GitHub, Glassdoor, BuiltIn) - limit to 30 jobs
+            logger.info("Background: Scraping from job sources...")
+            jobs = scrape_target_jobs()
+            saved_count = save_jobs_to_db(jobs)
+            
+            # 2. Scrape from favorite company career pages - limit to 20 companies
+            logger.info("Background: Scraping from favorite company career pages...")
+            from scraper.job_scraper import scrape_favorite_companies_jobs
+            career_jobs = scrape_favorite_companies_jobs()
+            career_saved_count = save_jobs_to_db(career_jobs)
+                
+            logger.info(f"Background refresh complete: {len(jobs)} swipe jobs, {len(career_jobs)} career jobs, {saved_count + career_saved_count} total saved")
+            
+        except Exception as e:
+            logger.error(f"Background job refresh error: {str(e)}")
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5050))

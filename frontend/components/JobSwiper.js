@@ -28,42 +28,84 @@ const JobSwiper = ({ onSaveJob, onApplyJob }) => {
   }, []);
 
   const fetchJobs = async () => {
+    setLoading(true);
+    setError(null);
+
     try {
-      setLoading(true);
-      setError(null);
-
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
 
-      const response = await fetch(`${API_URL}/jobs`, {
-        signal: controller.signal,
+      const response = await fetch(`${API_URL}/api/jobs`, {
+        method: 'GET',
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
         },
+        signal: controller.signal,
       });
 
       clearTimeout(timeoutId);
 
       if (!response.ok) {
-        throw new Error(`Server returned ${response.status} status`);
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        throw new Error('Response is not JSON');
       }
 
       const data = await response.json();
-      setJobs(data);
-    } catch (err) {
-      console.error('Fetch error:', err);
 
-      // Handle specific error types
-      if (err.name === 'AbortError') {
-        setError('Request timed out. Please check your internet connection.');
-      } else if (err.message.includes('JSON')) {
-        setError('Invalid response from server. Please try again.');
+      if (Array.isArray(data)) {
+        setJobs(data);
+        console.log(`Loaded ${data.length} jobs (hybrid mode - cached + background refresh)`);
       } else {
-        setError(`Failed to load jobs: ${err.message || 'Unknown error'}`);
+        throw new Error('Invalid data format');
+      }
+
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        console.log('Request timeout - trying cached jobs only...');
+        // Fallback to cached jobs only
+        await fetchCachedJobsOnly();
+      } else {
+        console.error('Error fetching jobs:', error);
+        setError('Failed to load jobs. Please try again.');
+        // Fallback to cached jobs only
+        await fetchCachedJobsOnly();
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchCachedJobsOnly = async () => {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
+
+      const response = await fetch(`${API_URL}/api/jobs/cached`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (response.ok) {
+        const data = await response.json();
+        if (Array.isArray(data)) {
+          setJobs(data);
+          console.log(`Loaded ${data.length} cached jobs only`);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching cached jobs:', error);
+      setError('Unable to load jobs. Please check your connection.');
     }
   };
 

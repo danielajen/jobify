@@ -26,15 +26,6 @@
       "package": "com.danielajenifuja.jobswipe",
       "versionCode": 1
     },
-    "web": {
-      "bundler": "metro"
-    },
-    "plugins": [],
-    "extra": {
-      "eas": {
-        "projectId": "your-project-id"
-      }
-    },
-    "owner": "danielajenifuja"
+    "plugins": []
   }
 }

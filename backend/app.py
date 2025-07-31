@@ -2417,10 +2417,27 @@ def api_linkedin_search_profiles():
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
 def serve_frontend(path):
-    if path != "" and os.path.exists("frontend/dist/" + path):
-        return send_from_directory('frontend/dist', path)
-    else:
-        return send_from_directory('frontend/dist', 'index.html')
+    try:
+        # Check if the path exists in frontend/dist
+        if path != "" and os.path.exists(os.path.join("frontend/dist", path)):
+            return send_from_directory('frontend/dist', path)
+        else:
+            # Serve index.html for all other routes (SPA routing)
+            return send_from_directory('frontend/dist', 'index.html')
+    except Exception as e:
+        # Fallback to API response if frontend not found
+        return jsonify({
+            'message': 'JobSwipe API is running!',
+            'status': 'healthy',
+            'frontend_error': str(e),
+            'api_endpoints': [
+                '/api/jobs',
+                '/api/apply', 
+                '/api/profile',
+                '/api/linkedin/auth',
+                '/health'
+            ]
+        })
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5050))

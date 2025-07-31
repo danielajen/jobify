@@ -162,6 +162,18 @@ celery.conf.update(
 
 # Redis Configuration with production settings
 try:
+    # For Heroku Redis, we need to handle SSL certificates properly
+    import ssl
+    import urllib.parse
+    
+    # Parse the Redis URL to extract components
+    parsed = urllib.parse.urlparse(REDIS_URL)
+    
+    # Create SSL context that doesn't verify certificates
+    ssl_context = ssl.create_default_context()
+    ssl_context.check_hostname = False
+    ssl_context.verify_mode = ssl.CERT_NONE
+    
     redis_client = redis.from_url(
         REDIS_URL,
         decode_responses=True,
@@ -169,7 +181,8 @@ try:
         socket_timeout=5,
         retry_on_timeout=True,
         health_check_interval=30,
-        max_connections=20
+        max_connections=20,
+        ssl=ssl_context
     )
     # Test connection with timeout
     redis_client.ping()
